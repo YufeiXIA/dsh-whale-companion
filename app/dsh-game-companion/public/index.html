@@ -1,0 +1,850 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>鲸鱼游戏搭子</title>
+<style>
+:root{color-scheme:light;--ink:#414b6b;--muted:#8290a8;--line:#e2e7f2}
+*{box-sizing:border-box}html{background:transparent}body{margin:0;height:100vh;display:flex;flex-direction:column;background:transparent;color:var(--ink);padding:10px;font:13px/1.6 system-ui,'Microsoft YaHei UI',sans-serif;overflow:hidden}
+button,input,select{font:inherit}button,summary{cursor:pointer}button{color:var(--ink);background:#fff;border:1px solid #dfe5f0;border-radius:12px;padding:7px 12px;transition:background .16s,transform .16s}button:hover:not(:disabled){background:#eef0fc;transform:translateY(-1px)}button:disabled{cursor:default;opacity:.45}button:focus-visible,summary:focus-visible,input:focus-visible{outline:2px solid #8b94c8;outline-offset:3px}button svg,summary svg{width:16px;height:16px;flex-shrink:0;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}input{min-width:0;flex:1}video{object-fit:contain}
+.companion-card{min-height:0;flex:1;display:flex;flex-direction:column;position:relative;background:linear-gradient(150deg,#fcfdff 0%,#f0f5fd 48%,#f5f1fc 100%);border:1px solid #ffffffed;border-radius:26px;box-shadow:0 6px 18px #182b4426;overflow:hidden}
+header{height:132px;flex-shrink:0;position:relative;padding:11px 22px 8px;background:radial-gradient(ellipse at 85% 65%,#dce4f599,transparent 62%)}h1{margin:3px 0 12px;font-size:23px;line-height:1.4;font-weight:700;letter-spacing:1px;color:#46547c}.eyebrow{font-size:11px;letter-spacing:2px;color:#8c96b1}
+#hide-panel{display:inline-flex;align-items:center;gap:7px;min-height:34px;padding:6px 11px;border:1px solid #d7ddef;border-radius:11px;background:#ffffffd9;color:#65729a;font-size:12px;box-shadow:0 2px 4px #56658f07}#hide-panel:hover{background:#e9eafa;border-color:#bcc6e1}
+#stage{position:relative;isolation:isolate;flex-shrink:0}body:not(.compact) #stage{position:absolute;z-index:2;right:16px;top:44px;width:150px;height:140px;pointer-events:none;overflow:hidden}body:not(.compact) :is(#pet,#pet-buffer){width:250px;height:222px;right:-50px;bottom:-35px}
+#status{display:block;flex-shrink:0;margin:1px 22px 10px;font-size:11px;color:#7d89a1}#status:before{content:'';display:inline-block;width:6px;height:6px;margin-right:7px;background:#a0bcb9;border-radius:50%;vertical-align:middle}
+#size-setting{display:flex;align-items:center;gap:10px;margin:0 20px 12px;padding:8px 11px;background:#ffffff80;border:1px solid #e5e9f4;border-radius:12px;color:var(--muted);font-size:11px;flex-shrink:0}#pet-size{width:100%;accent-color:#929bc9;height:12px}#pet-size-value{min-width:33px;text-align:right;font-variant-numeric:tabular-nums}
+#controls{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:0 20px 12px;flex-shrink:0}#controls button{font-size:12px;padding:7px 4px;min-height:34px;white-space:nowrap}#resume{background:#7b89b5;border-color:#7b89b5;color:#fff}#resume:hover:not(:disabled){background:#6d7ca9}#pause{background:#fff9fc;color:#aa8093;border-color:#eddfe7}#voice{background:#f5f6fc;color:#7783a5}#voice[aria-pressed=true]{background:#eaf3f1;color:#688e89;border-color:#dbeae6}
+#error,#voice-status{font-size:11px;flex-shrink:0;margin:0 20px}#error:empty,#voice-status:empty{display:none}#error:not(:empty){padding:7px 10px;margin-bottom:10px;color:#a77386;background:#fbf0f4;border:1px solid #f1e2e9;border-radius:10px}#voice-status:not(:empty){color:var(--muted);padding-bottom:8px}
+.settings{display:flex;gap:6px;margin:0 20px;padding-bottom:12px;border-bottom:1px solid var(--line);position:relative;flex-shrink:0}.settings>details{flex:1;min-width:0;font-size:11px;color:#8590aa}.settings summary{list-style:none;cursor:pointer}.settings>details>summary{display:flex;align-items:center;justify-content:center;gap:6px;min-height:32px;border-radius:10px;background:#ffffff80;border:1px solid #e4e8f3;user-select:none}.settings>details>summary::-webkit-details-marker{display:none}.settings>details>summary:after{content:'⌄';margin-left:2px;color:#a4acc2}.settings>details[open]>summary{color:#6975a0;background:#e9ecfa;border-color:#d8def0}.settings>details[open]>summary:after{content:'⌃'}
+.settings-popover{position:absolute;z-index:5;top:38px;left:-6px;right:-6px;padding:14px 16px;border:1px solid #dfe3f0;border-radius:16px;background:#fcfdff;box-shadow:0 10px 25px #414b7026;max-height:185px;overflow:auto;font-size:12px;color:var(--ink)}.settings small{color:var(--muted);font-size:11px}#technical #budget,#technical #goal{padding:4px 0}#technical #goal{display:block}#debug-error{white-space:pre-wrap;overflow-wrap:anywhere;color:#a77386}#sound-settings input{width:110px;padding:0;accent-color:#929bc9;vertical-align:middle}.settings-popover button{font-size:11px;margin-top:6px}#mode{display:block;color:#7a84a6;background:#edf0fa}#goal{color:var(--muted)}
+#conversation-bar{display:flex;align-items:center;gap:8px;padding:8px 15px 0;flex-shrink:0}#conversation-list{flex:1;min-width:0;width:0;padding:6px 9px;border:1px solid #d4deed;border-radius:11px;background:#f4f7fc;color:#60779b;font-size:11px;text-overflow:ellipsis}#new-conversation{display:flex;align-items:center;gap:4px;flex-shrink:0;padding:6px 9px;border-radius:12px;background:#fffdf6;color:#64799b;border-color:#dedfda;font-size:11px}#new-conversation svg{width:13px;height:13px}.compact #conversation-bar{display:none}
+#messages{min-height:0;flex:1;overflow:auto;padding:16px 20px 4px;scrollbar-width:thin;scrollbar-color:#d3daec transparent}#messages:empty:before{content:'在呢。\A 想聊什么？';display:block;white-space:pre-line;text-align:center;color:#9ba5bb;padding:25px 0;line-height:2}article{position:relative;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.85;padding:11px 14px;margin-bottom:12px;font-size:13px}article.assistant{margin-right:22px;background:#ffffffed;border:1px solid #e5e9f3;border-radius:6px 18px 18px 18px;box-shadow:0 3px 9px #56658f04}article.user{margin-left:28px;background:#e5e9f8;color:#5c698f;border:1px solid #dce2f3;border-radius:18px 6px 18px 18px}article details{color:#8b95ad;font-size:11px}article details[open]{color:#65718e}article details>div{padding-top:7px;font-size:12px}article small{display:block;color:var(--muted);font-size:10px}.delivery-warning{color:#a77386}
+form{display:flex;margin:0;padding:12px 16px 16px;gap:8px;flex-shrink:0;background:linear-gradient(transparent,#f5f4fc 28%)}#chat{background:#fff;color:var(--ink);border:1px solid #e0e4f0;border-radius:15px;padding:11px 13px;font-size:12px;box-shadow:0 2px 6px #69779c04}#chat::placeholder{color:#a0a9bf}form button{display:grid;place-items:center;background:#8b96c0;color:white;border:0;border-radius:14px;width:42px;height:42px;padding:0;flex-shrink:0}form button svg{width:19px;height:19px}form button:hover:not(:disabled){background:#7a87b3}footer{padding:0 20px 8px;color:var(--muted);font-size:10px}body.focus .delivery,body.focus #goal,body.focus footer{display:none}
+@media(max-height:600px){header{height:93px;padding-top:3px}h1{font-size:20px;margin:1px 0 5px}.eyebrow{font-size:10px}#hide-panel{min-height:32px;padding:5px 9px}body:not(.compact) #stage{top:37px;height:100px}body:not(.compact) :is(#pet,#pet-buffer){width:215px;height:190px;right:-34px;bottom:-37px}#status{margin-bottom:6px}#size-setting{margin-bottom:8px;padding:5px 10px}#controls{margin-bottom:8px}.settings{padding-bottom:8px}#error:not(:empty){padding:5px 9px;margin-bottom:6px}form{padding:8px 14px 12px}.settings-popover{max-height:160px}}
+input[type=range]{appearance:none;background:transparent;cursor:pointer}input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:4px;background:#dce2f2}input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;margin-top:-5px;border:2px solid #fff;border-radius:50%;background:#919cc8;box-shadow:0 1px 4px #56658f30}
+.game-exit-options{padding-bottom:12px;margin-bottom:10px;border-bottom:1px solid var(--line)}.game-exit-options label{display:flex;align-items:center;gap:6px;margin-top:9px}.game-exit-options input{flex:none;accent-color:#919cc8}.game-exit-options small{display:block;margin-top:7px}#exit-whale-game{background:#fff4f7;color:#a77386;border-color:#eddfe7}
+.desktop-options{padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--line)}.desktop-options>label{display:inline-flex;align-items:center;gap:4px;margin-left:8px}.desktop-options input{accent-color:#919cc8}.desktop-options small{display:block;margin-top:7px}#desktop-play{background:#e9ecfa;color:#64739f}
+.desktop-options>label[for="desktop-mode"]{display:block;margin:12px 0 5px;font-size:12px;color:var(--muted)}#desktop-mode{display:block;width:100%;padding:9px 10px;border:1px solid #d6e2ee;border-radius:10px;background:#f7f9ff;color:#536b83;font:inherit}#desktop-mode:focus-visible{outline:2px solid #919cc8;outline-offset:2px}
+@media(prefers-reduced-motion:reduce){button{transition:none}}
+.pet-layer{opacity:0;transition:opacity .18s ease}.pet-layer.pet-front{opacity:1}@media(prefers-reduced-motion:reduce){.pet-layer{transition:none}}
+</style>
+<style>
+body{--pet-scale:1}body.compact{padding:0;gap:0}.compact #nativebar,.compact .companion-card{display:none!important}
+:is(#pet,#pet-buffer){position:absolute;filter:drop-shadow(0 5px 5px #4253791c)}
+.compact #stage{height:auto;flex:1;overflow:visible;margin-bottom:calc(76px - 55px * var(--pet-scale))}.compact :is(#pet,#pet-buffer){width:calc(300px * var(--pet-scale));height:calc(300px * var(--pet-scale));left:50%;right:auto;transform:translateX(-50%) scaleX(var(--clip-facing,var(--pet-facing,1)));bottom:calc(-25px * var(--pet-scale));pointer-events:none}
+#pet-hit{display:none}.compact #pet-hit{display:block;position:absolute;left:50%;bottom:calc(43px * var(--pet-scale));width:calc(130px * var(--pet-scale));height:calc(150px * var(--pet-scale));border:0;border-radius:45%;padding:0;background:transparent;cursor:grab;touch-action:none;z-index:2;transform:translateX(-50%)}.compact #pet-hit:hover:not(:disabled){background:transparent;transform:translateX(-50%)}.compact #pet-hit:active{cursor:grabbing}
+#speech-bubble{display:none}
+#quick-chat{display:none}
+.compact #quick-chat{display:flex;align-items:center;gap:7px;position:absolute;z-index:5;left:50%;bottom:7px;width:min(330px,calc(100% - 24px));padding:8px 9px 8px 11px;border:1px solid #a5b5d5;border-radius:24px;background:linear-gradient(135deg,#3a507b,#2a3b5f);box-shadow:0 5px 15px #111d3733,inset 0 0 0 2px #bdac7b22;opacity:0;transform:translate(-50%,7px);pointer-events:none;transition:opacity .2s,transform .2s}
+.compact.quick-chat-open #quick-chat{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+#quick-chat .quick-mark{color:#dcc792;font-size:17px;line-height:1}#quick-message{width:0;min-width:0;flex:1;background:#fffaf1;color:#3d4b6a;border:1px solid #e0d9c8;border-radius:16px;padding:8px 11px;font-size:12px}#quick-message::placeholder{color:#8d9bb4}#quick-send{border:1px solid #bacbe6;background:#708bb6;color:#fff8e9;border-radius:50%;width:32px;height:32px;padding:6px;flex-shrink:0}#quick-send svg{width:18px;height:18px}#quick-chat-status{position:absolute;left:16px;bottom:calc(100% + 5px);padding:3px 9px;border-radius:10px;background:#fffaf1;color:#536788;font-size:11px;box-shadow:0 2px 6px #25355522}#quick-chat-status:empty{display:none}
+#ambient-details{margin-top:4px}#ambient-details summary{display:inline-block;font-size:11px;color:#657ca0}#ambient-details>div{padding:7px 0 3px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}#ambient-details select,#ambient-details input[type=number]{border:1px solid #ccd7e8;border-radius:10px;background:#fffaf3;color:#526485;padding:5px 7px;font-size:11px}#ambient-details input[type=number]{width:48px;flex:none}#ambient-custom[hidden]{display:none}
+.compact #speech-bubble{display:block;position:absolute;z-index:3;left:50%;bottom:calc(202px * var(--pet-scale));width:max-content;min-width:218px;max-width:min(320px,calc(100% - 20px));padding-right:30px;color:#344e77;font-size:13px;line-height:1.65;letter-spacing:.15px;overflow-wrap:anywhere;opacity:0;transform:translate(-50%,4px);transition:opacity 1.2s ease,transform 1.2s ease;pointer-events:none}
+/* Adult-card blue and ivory palette, with a clean pearl finish at desktop size. */
+.whale-body{position:relative;z-index:1;padding:17px 20px 19px;border:1px solid #b7c9e2;border-radius:32px 26px 29px 32px;background:linear-gradient(155deg,#fffdf8 0%,#f2f6ff 54%,#dce8f8 100%);box-shadow:0 5px 12px #16254424,inset 0 1px 0 #fff,inset 0 -3px 5px #a7bfdf30}
+.whale-body:before{content:'';position:absolute;inset:3px;border:1px solid #ffffffb3;border-radius:inherit;pointer-events:none}
+#bubble-text{position:relative;z-index:1}
+.whale-fin{position:absolute;bottom:-10px;left:58%;width:23px;height:20px;overflow:visible}
+.whale-tail{position:absolute;right:0;top:calc(50% - 30px);width:48px;height:54px;filter:drop-shadow(0 3px 3px #16254418)}
+.whale-spout{position:absolute;left:29px;top:-17px;width:20px;height:19px}
+.compact #speech-bubble.visible{opacity:1;transform:translate(-50%,0);transition-duration:.18s}
+@media(prefers-reduced-motion:reduce){.compact #speech-bubble{transition:none}}
+</style>
+
+<style id="whale-pocket-theme">
+/* Navy whale shell, ivory apron pages, and restrained gold details. */
+body:not(.compact){padding:18px 17px 12px}
+.companion-card{padding:0 9px 9px;background:linear-gradient(155deg,#3b507f,#253555 68%,#35496d);border:1px solid #a3b4d5;border-radius:48px 50px 66px 52px;overflow:visible;box-shadow:inset 0 0 0 4px #283b60,inset 0 0 0 5px #b8a77a66,0 6px 16px #111a3233}
+.shell-tail{position:absolute;width:79px;height:60px;right:-5px;top:-18px;pointer-events:none;z-index:-1}
+.shell-fin{position:absolute;width:30px;height:100px;top:43%;pointer-events:none;z-index:-1}.shell-fin.left{left:-16px}.shell-fin.right{right:-16px;transform:scaleX(-1)}
+header{height:145px;padding:12px 16px 8px;background:none;z-index:1;flex-shrink:0}
+.eyebrow{color:#c9b986;font-size:9px;letter-spacing:2px}h1{color:#fff7e9;font-size:27px;letter-spacing:3px;margin:4px 0 0;font-weight:650}.hero-caption{font-size:11px;color:#c3d2e9;margin:3px 0 10px}
+#hide-panel{min-height:32px;color:#e5eafa;background:#ffffff0d;border:1px solid #aabbdb66;border-radius:18px;font-size:11px;padding:5px 10px;box-shadow:none}#hide-panel:hover{background:#ffffff20;border-color:#c9b986}
+body:not(.compact) #stage{visibility:hidden}
+#portrait-card{position:absolute;right:0;top:-10px;width:155px;height:157px;padding:0;border:0;background:none;transform:none;filter:drop-shadow(0 4px 5px #0d18393d)}#portrait-card:hover{background:none;transform:translateY(-2px)}#portrait-card img{width:100%;height:100%;object-fit:contain}#portrait-card span{position:absolute;right:11px;bottom:0;font-size:9px;letter-spacing:1px;background:#253656d9;border:1px solid #b9ac855c;border-radius:10px;padding:1px 8px;color:#eedcb3}
+.belly{display:flex;flex-direction:column;flex:1;min-height:0;position:relative;padding-top:13px;border:1px solid #d8d9e3;border-radius:25px 25px 54px 43px;background:linear-gradient(145deg,#fffaf0,#eff3fb 66%,#e4ecf7);overflow:hidden;box-shadow:inset 0 2px 0 #fff}
+.belly:before{content:'✦  ·  ✦';position:absolute;top:0;left:0;right:0;text-align:center;color:#a5abc5;font-size:8px;letter-spacing:12px;pointer-events:none}
+#status{margin:0 16px 8px;color:#6c7c98;font-size:10px}#status:before{background:#7bada9}
+#size-setting{margin:0 14px 9px;padding:5px 8px;border:0;background:#dce5f35c;border-radius:9px;font-size:10px;gap:8px}
+#controls{margin:0 14px 9px;gap:5px}#controls button{min-height:32px;padding:6px 3px;font-size:11px;border-radius:11px}#resume{background:#526b99;border-color:#526b99}#pause{background:#fbf1f0;border-color:#e7d6d7;color:#a2747a}#voice[aria-pressed=true]{background:#e3efea;border-color:#cedfd9;color:#557f79}
+.settings{margin:0 14px;padding-bottom:9px;gap:4px;border-color:#cdd7e6}.settings>details>summary{min-height:29px;border:0;background:transparent;border-radius:8px;color:#697d9d}.settings>details[open]>summary{background:#dce5f3;color:#435d88}.settings>details>summary:hover{background:#e3eaf5}.settings-popover{top:35px;left:-3px;right:-3px;background:#fffdf8;border-color:#d0d8e5;border-radius:15px;padding:12px;box-shadow:0 8px 18px #263c6230}
+#error,#voice-status{margin-left:14px;margin-right:14px}#error:not(:empty){background:#f6e8e9;border:0;padding:5px 8px;margin-bottom:7px}
+#messages{padding:12px 14px 2px;scrollbar-color:#b5c6db transparent}article{font-size:12px;padding:10px 12px;margin-bottom:10px}article.assistant{background:#fffdf6;border-color:#e4dece;box-shadow:0 3px 6px #47597b08;margin-right:16px}article.user{background:#dce6f4;border-color:#cbd9ed;color:#4c6385;margin-left:20px}
+form{padding:9px 17px 20px;background:linear-gradient(transparent,#e9eff8 35%);gap:7px}#chat{font-size:11px;padding:10px 11px;background:#fffcf6;border-color:#d2dbea;border-radius:18px}form button{width:36px;height:36px;border-radius:50%;background:#526b99;box-shadow:0 2px 0 #304b79}form button:hover:not(:disabled){background:#425b88}
+#character-sheet{position:absolute;inset:38px 8px 10px;z-index:20;margin:0;max-width:none;max-height:none;width:auto;height:auto;padding:17px;border:1px solid #b2a27d;border-radius:25px 25px 48px 40px;background:radial-gradient(ellipse at 60% 34%,#fdf9ed,#e9eff9 65%);color:#425879;box-shadow:0 8px 25px #14223c55;overflow:auto}
+#character-sheet::backdrop{background:#101e3660;border-radius:30px}#close-character{position:absolute;right:12px;top:10px;padding:3px 10px;font-size:18px;border:0;background:#e1e8f4;z-index:1}#character-sheet img{display:block;width:100%;height:54%;min-height:130px;object-fit:contain}#character-sheet h2{font-size:22px;letter-spacing:3px;margin:4px 0;text-align:center}#character-sheet .card-subtitle{text-align:center;font-size:10px;color:#8b8fab;letter-spacing:2px}#character-sheet p{font-size:12px;margin:12px 4px;line-height:1.9}#character-sheet .card-tags{display:flex;justify-content:center;gap:6px;margin-top:10px}.card-tags span{font-size:10px;padding:2px 7px;background:#dce5f3;border-radius:10px}#character-sheet small{display:block;border-top:1px solid #cdd7e4;padding-top:8px;margin-top:12px;font-size:9px;color:#8a95a9;line-height:1.6}
+@media(max-height:600px){body:not(.compact){padding:13px 15px 8px}.companion-card{padding:0 7px 7px;border-radius:40px 43px 50px 43px}header{height:106px;padding:5px 13px}h1{font-size:23px;margin:2px 0}.hero-caption{font-size:10px;margin:1px 0 5px}.eyebrow{font-size:8px}#portrait-card{height:116px;width:116px;top:-8px;right:-2px}#portrait-card span{font-size:8px;right:0}.belly{padding-top:10px;border-radius:20px 20px 40px 34px}#status{margin-bottom:5px;font-size:9px}#size-setting{padding:3px 6px;margin-bottom:6px}#controls{margin-bottom:5px}#controls button{min-height:30px;padding:4px 2px}.settings{padding-bottom:5px}.settings>details>summary{min-height:27px}.settings-popover{top:31px;max-height:160px}#messages{padding-top:9px}form{padding:7px 12px 13px}#character-sheet{inset:34px 7px 7px}#character-sheet p{margin:7px 4px}#character-sheet img{height:46%}.shell-tail{width:67px;height:51px;top:-14px}}
+
+.emotion-previews{margin-top:12px;padding-top:10px;border-top:1px dashed #d5cbb7}
+#sound-settings .settings-popover{max-height:min(270px,calc(100vh - 360px))}
+.emotion-previews>span{font-size:12px;color:#536890}.emotion-previews>small{display:block;margin:4px 0 8px;font-size:10px;line-height:1.6;color:#8390a6}
+.emotion-buttons{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}.emotion-buttons button{padding:6px 2px;border-radius:12px;font-size:11px;background:#eaf0fa;border-color:#d4deef;color:#536d94}.emotion-buttons button:nth-child(3){background:#f8eef1;border-color:#e9d8e0;color:#976e83}
+
+/* Expanded header preference; compact desktop pet stays animated. */
+.portrait-switch{position:absolute;right:16px;bottom:1px;display:flex;gap:2px;padding:2px;border:1px solid #aabbdb66;border-radius:14px;background:#263957;z-index:3}
+.portrait-switch button{border:0;border-radius:10px;padding:1px 10px;font-size:10px;line-height:20px;background:transparent;color:#bacbe5;transform:none}
+.portrait-switch button[aria-pressed=true]{background:#dce7f5;color:#364d75}
+.portrait-switch button:hover:not(:disabled){background:#62799f;color:#fff;transform:none}
+#portrait-card{height:137px}
+body[data-portrait-mode=animated]:not(.compact) #stage{visibility:visible;top:48px;right:25px;width:155px;height:142px}
+body[data-portrait-mode=animated]:not(.compact) #card-art{visibility:hidden}
+@media(max-height:600px){#portrait-card{height:96px}.portrait-switch{right:4px;bottom:0}.portrait-switch button{padding:0 8px;line-height:18px}body[data-portrait-mode=animated]:not(.compact) #stage{top:40px;right:20px;width:116px;height:106px}}
+</style>
+
+<style id="whale-pocket-polish">
+/* Character-card palette; chat gets the room, occasional settings live in drawers. */
+:root{--sea-deep:#2B3F73;--sea:#4E7FC6;--sea-pale:#DCEAF7;--lilac:#E9E6F1;--blush:#FCD6C4;--rice:#fffdf6;--ink:#3b496c;--muted:#72819b}
+*{scrollbar-width:thin;scrollbar-color:#b5c6db transparent}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+header{height:130px;padding:8px 16px 6px}
+.eyebrow{display:inline-block;padding:0 9px;border:1px solid #c9b98666;border-radius:10px;background:#ffffff0d;font-size:10px;line-height:16px;letter-spacing:1px}
+h1{line-height:1.2;margin:4px 0 0}.hero-caption{font-size:12px;color:#d3def0;margin:2px 0 5px}
+.belly{padding-top:11px}
+#hide-panel{font-size:12px}.portrait-switch button{font-size:11px}#portrait-card{height:126px}
+#status-row{display:flex;align-items:center;gap:8px;margin:0 14px 8px;flex-shrink:0}
+#status{flex:1;min-width:0;margin:0;padding:5px 10px;border-radius:13px;background:#dce5f399;color:#465d86;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#controls{display:flex;gap:5px;margin:0}
+#controls button{display:grid;place-items:center;width:32px;height:32px;min-height:32px;padding:0;border-radius:50%}#controls svg{width:15px;height:15px}
+#resume{background:var(--sea-deep);border-color:var(--sea-deep);color:#fff}#resume:hover:not(:disabled){background:#22335f}#resume .solid{fill:currentColor;stroke-width:1.2}
+#voice .voice-off,#voice:not([aria-pressed=true]) .voice-on{display:none}#voice:not([aria-pressed=true]) .voice-off{display:inline}
+input[type=checkbox]{appearance:none;flex:none;position:relative;width:28px;height:16px;margin:0 6px 0 0;border-radius:9px;background:#cdd6e4;vertical-align:middle;cursor:pointer;transition:background .16s}
+input[type=checkbox]:before{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:0 1px 2px #2b3f7333;transition:transform .16s}
+input[type=checkbox]:checked{background:var(--sea)}input[type=checkbox]:checked:before{transform:translateX(12px)}input[type=checkbox]:disabled{opacity:.45;cursor:default}
+.settings{margin:0 14px;padding-bottom:8px}.settings>details{font-size:12px}.settings small{font-size:11px}.settings-popover,.settings-popover button{font-size:12px}
+#companion-settings .settings-popover{max-height:min(280px,calc(100vh - 330px))}
+#size-setting{margin:0 0 10px;padding:6px 9px;font-size:12px}
+#ambient-options label,#vision-options label{display:flex;align-items:center}#ambient-details summary,#ambient-details select,#ambient-details input[type=number]{font-size:12px}#ambient-details small{display:block;margin-top:2px}
+#vision-options{margin-top:10px;padding-top:10px;border-top:1px dashed #d5cbb7}#vision-options{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px}#vision-options small{display:block;margin-top:3px;flex-basis:100%}#vision-pause{padding:2px 10px;font-size:12px;border-radius:10px}
+.emotion-previews>small{font-size:11px}.emotion-buttons button{font-size:12px}
+#conversation-bar{padding:6px 14px 0}#conversation-list,#new-conversation{font-size:12px;padding-top:5px;padding-bottom:5px}
+#messages{padding:12px 14px 4px}
+article{width:fit-content;max-width:88%;font-size:13px;line-height:1.75;padding:9px 12px}article small{font-size:11px}
+article.assistant{margin-right:auto;background:var(--rice);border:1px solid #a9c2e3}
+article.user{max-width:78%;margin-left:auto;margin-right:0;background:var(--sea-pale);border-color:#c3d7ee;color:#2f4a78}
+form{padding:8px 14px 14px}#chat{font-size:13px;padding:9px 12px}footer{font-size:11px;text-align:center}
+#character-sheet .card-subtitle,.card-tags span{font-size:11px}#character-sheet small{font-size:10px}
+[hidden]{display:none!important}
+.settings>details>summary{white-space:nowrap;gap:4px;padding:0 2px}.settings>details>summary:after{display:none}
+@media(max-width:380px){.settings>details>summary{gap:2px;padding:0;font-size:11px}.settings>details>summary svg{width:12px;height:12px}}
+@font-face{font-family:WhaleTitle;src:url(/game-companion/art/fonts/title.woff2) format('woff2'),local('STHupo'),local('华文琥珀');font-display:swap}
+@font-face{font-family:WhaleQuote;src:url(/game-companion/art/fonts/quote.woff2) format('woff2'),local('KaiTi'),local('楷体');font-display:swap}
+h1,#character-name{font-family:WhaleTitle,system-ui,"Microsoft YaHei UI",sans-serif;font-weight:400}#messages:empty:before,#character-sheet p{font-family:WhaleQuote,system-ui,"Microsoft YaHei UI",sans-serif}#messages:empty:before{font-size:15px;color:#8796b3}
+#history-settings .settings-popover{max-height:min(330px,calc(100vh - 300px))}
+#history-settings #conversation-bar{padding:0}
+#history-actions{display:flex;gap:6px;margin:8px 0 0}#history-actions button{flex:1;padding:4px 0}#delete-conversation:hover:not(:disabled){color:#b4553a;border-color:#e5b9a8}
+#rename-form{display:flex;gap:6px;margin-top:8px}#rename-form[hidden]{display:none}#conversation-title{flex:1;min-width:0;padding:5px 9px;border:1px solid #c3d3ea;border-radius:9px;font:inherit}
+#memory-section{margin-top:12px;padding-top:10px;border-top:1px dashed #d5cbb7}#memory-section>span{font-weight:600;color:var(--sea-deep)}
+#memory-list{list-style:none;margin:6px 0;padding:0}#memory-list li{display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #eef1f7}#memory-list li span{flex:1;min-width:0;line-height:1.5}
+#memory-list li button{flex:none;padding:2px 8px;font-size:11px}#memory-list .memory-empty{color:var(--muted);border:0}
+#animation-settings .settings-popover{max-height:min(360px,calc(100vh - 300px))}
+.action-library{position:relative;margin:10px 0 6px}#action-search{width:100%;box-sizing:border-box;padding:5px 10px;border:1px solid #c3d3ea;border-radius:9px;font:inherit}
+#action-grid{max-height:190px;overflow:auto;margin-top:6px}#action-grid h3{margin:8px 0 4px;font-size:11px;font-weight:600;color:var(--muted)}#action-grid p{color:var(--muted);margin:10px 0}
+.action-chip{display:inline-flex;margin:0 4px 4px 0;border:1px solid #d3deed;border-radius:12px;background:#fff;overflow:hidden}
+.action-chip button{border:0;border-radius:0;background:transparent;padding:3px 4px 3px 9px;font-size:11px;min-height:0}.action-chip button:hover{background:var(--sea-pale)}
+.action-chip .action-star{padding:3px 7px 3px 3px;color:#c9a64c}
+#action-preview{position:absolute;right:4px;top:34px;width:96px;height:96px;object-fit:contain;border:1px solid #d3deed;border-radius:12px;background:#fffdf6;pointer-events:none;box-shadow:0 4px 10px #263c6224}
+.action-buttons{display:flex;gap:6px;margin:6px 0 4px}
+#focus-options{margin-top:10px;padding-top:10px;border-top:1px dashed #d5cbb7}.focus-row{display:flex;gap:6px;margin-bottom:5px}.focus-row button{flex:1}
+#focus-options small{display:block;margin-bottom:6px}#focus-options label{display:flex;align-items:center}
+#focus-badge{position:absolute;z-index:3;left:calc(50% + 38px * var(--pet-scale));bottom:calc(150px * var(--pet-scale));padding:2px 9px;border-radius:10px;background:#fffdf6e6;border:1px solid #e9c7b3;color:#a5583b;font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none}
+#focus-badge[hidden],body:not(.compact) #focus-badge{display:none}
+#health-options{display:flex;align-items:center;gap:12px;margin-top:8px;padding-top:8px;border-top:1px dashed #d5cbb7}#health-options span{font-size:12px;opacity:.75}#health-options label{display:flex;align-items:center}
+#vision-badge{position:absolute;z-index:3;right:calc(50% + 38px * var(--pet-scale));bottom:calc(150px * var(--pet-scale));padding:2px 9px;border-radius:10px;background:#f2f8ffe6;border:1px solid #9fc0dc;color:#2f5f86;font-size:12px;white-space:nowrap;pointer-events:none}
+#messages article.assistant{position:relative;margin-left:30px}#messages article.assistant:not(.continued):before{content:'';position:absolute;left:-30px;top:0;width:24px;height:24px;border-radius:50%;background:#dceaf7 url(/game-companion/art/portrait.png) 50% 18%/170% no-repeat;border:1px solid #c3d7ee}
+#messages article.continued{margin-top:-6px}
+#messages::-webkit-scrollbar{width:6px}#messages::-webkit-scrollbar-thumb{background:transparent;border-radius:3px}#messages:hover::-webkit-scrollbar-thumb{background:#b5c6db}
+.history-note{margin:0 0 10px;text-align:center;font-size:11px;color:var(--muted)}
+@media(max-height:600px){header{height:115px;padding:5px 13px}.eyebrow{font-size:9px;line-height:16px}h1{margin:3px 0 0}.hero-caption{font-size:11px;margin:1px 0 4px}#portrait-card{height:96px}#status-row{margin-bottom:5px}#controls button{width:30px;height:30px;min-height:30px}#messages{padding-top:8px}form{padding:6px 12px 10px}}
+</style>
+
+<div id="stage"><div id="focus-badge" hidden></div><div id="vision-badge" role="status" hidden>👀 瞄了一眼屏幕</div><video id="pet" aria-label="大肥鱼的动态形象" autoplay muted loop playsinline src="/whale-pet/turn/looking_around.webm"></video><button id="pet-hit" aria-label="打开聊天；拖动可移动大肥鱼" title="点我聊天 · 拖动挪窝"></button><div id="speech-bubble" role="status">
+<svg class="whale-tail" viewBox="0 0 50 54" aria-hidden="true"><defs><linearGradient id="whale-tail-pearl" x1="0" y1="0" x2="0.7" y2="1"><stop stop-color="#eef5ff"/><stop offset="1" stop-color="#a9c1e4"/></linearGradient></defs><path d="M1 38C13 37 20 32 23 25C12 25 7 16 9 5C22 6 28 14 29 22C32 11 39 5 48 5C50 18 44 27 33 27C30 41 19 49 1 49Z" fill="url(#whale-tail-pearl)" stroke="#aabedb" stroke-width="1.1" stroke-linejoin="round"/><path d="M13 9Q24 14 26 23M44 9Q35 14 32 23" fill="none" stroke="#ffffffb0" stroke-width="1.3" stroke-linecap="round"/></svg>
+<div class="whale-body"><span id="bubble-text"></span><svg class="whale-fin" viewBox="0 0 27 22" aria-hidden="true"><path d="M2 0Q8 13 22 18Q27 8 20 1" fill="#dbe7f7" stroke="#b2c5df" stroke-width="1.1" stroke-linecap="round"/><path d="M6 2Q11 10 20 14" fill="none" stroke="#ffffffaa" stroke-width="1.2"/></svg></div>
+<svg class="whale-spout" viewBox="0 0 24 22" aria-hidden="true"><path d="M9 19C3 13 3 6 7 7C11 8 10 14 9 19M14 16C14 7 20 3 22 7C24 12 18 15 14 16" fill="#bfd5ee" stroke="#edf5ff" stroke-width=".9"/></svg>
+</div></div>
+<form id="quick-chat" aria-label="和大肥鱼悄悄说一句" aria-hidden="true" inert><span class="quick-mark" aria-hidden="true">🐋</span><input id="quick-message" aria-label="桌宠快捷聊天" placeholder="悄悄说一句…" maxlength="4000" autocomplete="off"><button id="quick-send" type="submit" aria-label="发送悄悄话" title="说给她听"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 3-7 18-4-8-8-4zM10 13 21 3"/></svg></button><span id="quick-chat-status" role="status"></span></form>
+<main class="companion-card">
+<svg class="shell-tail" viewBox="0 0 90 70" aria-hidden="true"><path d="M14 65Q40 48 35 30Q13 29 8 6Q35 3 47 24Q57 2 83 5Q84 29 59 34Q64 53 48 68Z" fill="#354c79" stroke="#a3b4d5" stroke-width="1.4"/><path d="M18 12Q38 14 46 34M73 11Q54 16 48 34" fill="none" stroke="#c3b48b" stroke-opacity=".65"/></svg>
+<svg class="shell-fin left" viewBox="0 0 30 100" aria-hidden="true"><path d="M28 3Q-7 24 3 86Q20 78 28 50Z" fill="#354c79" stroke="#a3b4d5"/><path d="M23 19Q6 45 8 70" fill="none" stroke="#c3b48b" stroke-opacity=".65"/></svg>
+<svg class="shell-fin right" viewBox="0 0 30 100" aria-hidden="true"><path d="M28 3Q-7 24 3 86Q20 78 28 50Z" fill="#354c79" stroke="#a3b4d5"/><path d="M23 19Q6 45 8 70" fill="none" stroke="#c3b48b" stroke-opacity=".65"/></svg>
+
+<header><div class="eyebrow">口袋鲸鱼 · 白饭守护者</div><h1>大肥鱼</h1><p class="hero-caption">吃饱咯🍚我们再开一局🐋~</p><button id="hide-panel" title="收起聊天，只留下大肥鱼" aria-label="收起聊天，回到桌宠"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H4a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-4M21 3l-9 9m0-7v7h7"/></svg><span>回到桌宠</span></button><button id="portrait-card" title="翻开大肥鱼的人物小卡" aria-label="查看大肥鱼的人物小卡"><img id="card-art" alt="抱着白饭碗的鲸鱼娘" src="/game-companion/art/portrait.png"></button><div class="portrait-switch" role="group" aria-label="页首形象"><button id="portrait-static" aria-pressed="true">插画</button><button id="portrait-animated" aria-pressed="false">动态</button></div></header>
+<section class="belly" aria-label="陪伴与聊天">
+<div id="status-row"><span id="status">正在连接…</span><div id="controls"><button id="resume" title="继续合作" aria-label="继续合作"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="solid" d="M8 5.5v13l10.5-6.5z"/></svg></button><button id="pause" title="立即暂停" aria-label="立即暂停"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6v12M15 6v12"/></svg></button><button id="voice" title="语音开关"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path class="voice-on" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/><path class="voice-off" d="m16 9.5 5 5m0-5-5 5"/></svg><span id="voice-label" class="sr-only">开启语音</span></button></div></div>
+<div id="error" role="alert"></div><div id="voice-status"></div>
+<div class="settings">
+<details id="history-settings" name="settings"><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v10H9l-4 4z"/></svg>对话</summary><div class="settings-popover"><div id="conversation-bar"><select id="conversation-list" aria-label="切换聊天记录" title="切换聊天记录"></select><button id="new-conversation" title="保留这段聊天，开始独立的新对话"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>新对话</button></div><div id="history-actions"><button id="rename-conversation">改名</button><button id="export-conversation">导出</button><button id="delete-conversation">删除</button></div><div id="rename-form" hidden><input id="conversation-title" maxlength="40" aria-label="对话名字" placeholder="给这段对话起个名字"><button id="rename-save">好</button></div><div id="memory-section"><span>她记住了什么</span><ul id="memory-list"></ul><small>聊天里说「记住：……」或「忘记……」也行。删掉的只是记忆，聊天原文还在。</small></div></div></details>
+<details id="companion-settings" name="settings"><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-9.6A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.4C19 15.6 12 20 12 20z"/></svg>陪伴</summary><div class="settings-popover"><label id="size-setting" for="pet-size" title="只影响收起后的桌宠">桌宠大小 <input id="pet-size" type="range" min="60" max="160" step="5" value="100"><output id="pet-size-value" for="pet-size">100%</output></label><div id="ambient-options"><label><input id="ambient-enabled" type="checkbox"> 偶尔找我聊聊</label><details id="ambient-details"><summary>陪伴节奏</summary><div><select id="ambient-frequency" aria-label="主动搭话频率"><option value="15,30">安静 · 15～30分钟</option><option value="5,10">自然 · 5～10分钟</option><option value="2,5">活泼 · 2～5分钟</option><option value="custom">自己选个区间</option></select><span id="ambient-custom" hidden><input id="ambient-min" type="number" min="2" max="60" value="5" aria-label="最短搭话间隔"> ～ <input id="ambient-max" type="number" min="2" max="60" value="10" aria-label="最长搭话间隔"> 分钟 <button id="ambient-apply">设好啦</button></span></div><small>有合适的话题才开口，不会到点催你。</small></details></div><div id="vision-options"><label><input id="ambient-vision" type="checkbox"> 偶尔看看当前窗口</label><button id="vision-pause">一小时内别看</button><small>开了才会看 · 至少隔 5 分钟 · 截图只在内存里发给 DeepSeek 识图，不存盘 · 密码、银行、隐身窗口一律不看</small></div><div id="focus-options"><div class="focus-row"><button id="focus-start">🍅 专注 25 分钟</button><button id="quiet-hour">免打扰 1 小时</button></div><small id="focus-status">专注和免打扰时她都安静陪着，不主动搭话。</small><label><input id="edge-peek" type="checkbox"> 拖到屏幕边上时藏起一半</label><label><input id="fullscreen-hide" type="checkbox"> 别的程序全屏时自己躲起来</label></div><div id="health-options"><span>小提醒</span><label><input id="health-water" type="checkbox" title="大约每小时一次"> 喝水</label><label><input id="health-stretch" type="checkbox" title="连续坐了 50 分钟"> 久坐</label><label><input id="health-late" type="checkbox" title="凌晨 1 点后还在用电脑"> 熬夜</label></div></div></details>
+<details id="sound-settings" name="settings"><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4zM15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></svg>声音</summary><div class="settings-popover"><span>龙华 · 默认声音</span><br><small>每次只念一句短的，长文字留在屏幕上。</small><br><label>音量 <input id="volume" type="range" min="0" max="1" step="0.05" value="0.8"></label> <button id="preview-voice">试听龙华</button> <button id="stop-voice">打断语音</button>
+<div class="emotion-previews"><span>换个语气听听</span><small>同一句话，四种心情。</small><div class="emotion-buttons"><button id="preview-gentle">温柔</button><button id="preview-happy">开心</button><button id="preview-tsundere">小傲娇</button><button id="preview-serious">认真</button></div></div></div></details>
+<details id="animation-settings" name="settings"><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z"/></svg>小动作</summary><div class="settings-popover"><div class="desktop-options"><button id="desktop-play" aria-pressed="false">开始桌面陪伴</button><label><input id="free-roam" type="checkbox"> 自由跑动</label><label title="自由跑动时只在屏幕底边走"><input id="stroll" type="checkbox"> 沿着任务栏散步</label><label for="desktop-mode">陪伴方式</label><select id="desktop-mode"><option value="natural">自然陪伴</option><option value="showcase">全部动画展示</option></select><small id="desktop-mode-hint">自然待机、转身和小动作；开启自由跑动后会走动、偶尔靠近鼠标。</small></div><div class="action-library"><input id="action-search" type="search" placeholder="找个动作… 点 ☆ 收藏" aria-label="搜索动作" autocomplete="off"><div id="action-grid"></div><video id="action-preview" muted loop playsinline hidden></video></div><select id="pet-action" hidden aria-hidden="true" tabindex="-1"><optgroup label="通用·赢了好得意"><option value="companion/victory_smug">赢啦，才没有很得意</option><option value="companion/victory_trophy">我的小奖杯</option><option value="companion/victory_fistpump">漂亮，握个拳</option><option value="companion/victory_mvp">最佳搭子勋章</option><option value="companion/new_record">新纪录，收个彩带</option><option value="companion/teammate_praise">这操作，给你点赞</option><option value="companion/tiny_victory">赢你一点点而已</option><option value="companion/knew_it_notes">我早就知道</option></optgroup><optgroup label="通用·输了也陪你"><option value="companion/defeat_slump">输了，蔫一小会儿</option><option value="companion/defeat_rage">气鼓鼓摔手柄</option><option value="companion/defeat_retry">不服，再来</option><option value="companion/mistake_awkward">这波我认</option><option value="companion/clutch_save">呼，极限救回来了</option><option value="companion/teammate_comfort">输了也陪你缓缓</option><option value="companion/flourish_retry">不许笑，重来</option></optgroup><optgroup label="通用·认真秀操作"><option value="companion/combo_focus">连招，认真起来了</option><option value="companion/keyboard_burst">键盘噼里啪啦</option><option value="companion/rhythm_tap">跟着节奏打拍子</option><option value="companion/precision_aim">瞄准，再稳一点</option><option value="companion/racing_turn">方向盘，压个弯</option><option value="companion/ready_go">准备好了，出发</option><option value="companion/setup_pride">别挡着我发挥</option></optgroup><optgroup label="通用·队友与等待"><option value="companion/teammate_cheer">挥旗给你加油</option><option value="companion/teammate_highfive">来，击个掌</option><option value="companion/waiting_hourglass">等匹配的小沙漏</option><option value="companion/loading_bored">加载好慢，抱着等</option><option value="companion/low_battery">电量不多啦</option><option value="companion/loot_choice">战利品，选哪个好</option></optgroup><optgroup label="游戏道具"><option value="companion/controller_play">这把认真了</option><option value="companion/card_strategy">先让我想一想……</option><option value="companion/shield_ready">举好盾，先稳住</option><option value="companion/potion_offer">这瓶药，留着救急</option><option value="companion/map_route">下一站，往哪走？</option><option value="companion/loot_proud">战利品，给你看看</option></optgroup><optgroup label="小表情"><option value="companion/listening_nod">认真听完，点点头</option><option value="companion/bright_idea">我有个主意</option><option value="companion/relieved">呼，松一口气</option></optgroup><optgroup label="待机"><option value="idle/breathing">安静待着</option></optgroup><optgroup label="张望"><option value="turn/looking_around">东张西望</option></optgroup><optgroup label="走动"><option value="moves/floating_steps">飘着踏步</option><option value="moves/crab_walk">螃蟹走路</option><option value="moves/running_trip">跑两步摔一跤</option><option value="moves/target_point_run">冲刺跑</option></optgroup><optgroup label="互动"><option value="clicks/happy_hop">开心跃动</option><option value="clicks/shy_surprise">害羞惊讶</option><option value="clicks/tsundere_pout">傲娇生气</option><option value="clicks/ticklish_giggle">挠痒咯咯笑</option><option value="clicks/cheerful_wave">元气挥手</option><option value="clicks/arrival_wave">挥手打招呼</option></optgroup><optgroup label="拖动"><option value="drag/dragged_in_midair">被拎起来了</option><option value="drag/turn_into_ball">变成球</option></optgroup><optgroup label="日常"><option value="daily/maid_curtsy">女仆屈膝礼仪</option><option value="daily/big_stretch">超大伸懒腰</option><option value="daily/gentle_spin">转个圈</option><option value="daily/sleepy_yawn">哈欠连天</option><option value="daily/quick_nap">打个小盹</option><option value="daily/morning_brushing">晨间刷牙</option><option value="daily/mirror_check">照镜子</option><option value="daily/outfit_color_try_on">试试新配色</option><option value="daily/attentive_listening">侧耳倾听</option></optgroup><optgroup label="认真做事"><option value="work/taking_notes">记个笔记</option><option value="work/coding">写代码</option><option value="work/deep_thought">认真想事情</option></optgroup><optgroup label="小游戏"><option value="games/solving_a_rubiks_cube">专心玩魔方</option><option value="games/playing_with_a_toy_car">蹲下玩玩具汽车</option><option value="games/gaming_rage">玩游戏气急败坏</option><option value="games/water_gun_play">玩水枪</option><option value="games/rocking_horse">骑木马</option><option value="games/kicking_a_shuttlecock">踢毽子</option><option value="games/spinning_a_top">抽陀螺</option><option value="games/playing_gomoku">下五子棋</option><option value="games/playground_swing">荡秋千</option></optgroup><optgroup label="音乐"><option value="music/carefree_humming">悠闲哼歌</option><option value="music/playing_the_violin">小提琴演奏</option><option value="music/elegant_maid_dance">优雅女仆舞</option><option value="music/light_sway_dance">轻快摇摆舞</option><option value="music/cute_otaku_dance">可爱宅舞</option><option value="music/playing_the_flute">吹笛子</option></optgroup><optgroup label="零食"><option value="food/eating_snacks">大口吃零食</option><option value="food/eating_rice">吃白饭</option><option value="food/eating_breakfast">吃早餐</option><option value="food/eating_lunch">吃午餐</option><option value="food/eating_dinner">吃晚餐</option><option value="food/melting_ice_cream">吃冰淇淋融化</option><option value="food/eating_watermelon">吃西瓜</option><option value="food/eating_hotpot">涮火锅</option><option value="food/eating_hairy_crab">吃大闸蟹</option><option value="food/eating_candied_haw">吃糖葫芦</option><option value="food/eating_longevity_noodles">吃长寿面</option></optgroup><optgroup label="节日"><option value="festivals/moon_festival">中秋赏月吃月饼</option><option value="festivals/setting_off_fireworks">放烟花</option><option value="festivals/opening_a_gift">拆礼物</option><option value="festivals/eating_zongzi">吃粽子</option><option value="festivals/eating_tangyuan">吃汤圆</option><option value="festivals/eating_dumplings">吃饺子</option><option value="festivals/eating_qingtuan">吃青团</option><option value="festivals/eating_laba_congee">吃腊八粥</option><option value="festivals/eating_rice_cake">吃年糕</option><option value="festivals/eating_chongyang_cake">吃重阳糕</option><option value="festivals/receiving_a_red_envelope">收红包</option><option value="festivals/lion_dance">舞狮头</option><option value="festivals/writing_the_fu_character">写福字</option><option value="festivals/qixi_needlework">穿针乞巧</option><option value="festivals/decorating_a_christmas_tree">装点圣诞树</option><option value="festivals/halloween_trick_or_treat">讨糖南瓜灯</option><option value="festivals/chongyang_chrysanthemums">插茱萸赏菊</option><option value="festivals/releasing_a_river_lantern">放河灯</option><option value="festivals/cute_little_ghost">萌化小幽灵</option><option value="festivals/releasing_a_sky_lantern">放孔明灯</option></optgroup><optgroup label="四季"><option value="seasonal/building_a_snowman">堆雪人</option><option value="seasonal/cooling_with_a_hand_fan">摇扇纳凉</option><option value="seasonal/buried_in_autumn_leaves">被落叶淹没</option><option value="seasonal/flying_a_kite">放风筝</option></optgroup><optgroup label="魔术"><option value="magic/dove_magic">变鸽子魔术</option><option value="magic/flower_conjuring">凭空生花魔术</option><option value="magic/card_magic">扑克魔术</option></optgroup><optgroup label="玩闹"><option value="fun/inflating_a_balloon">吹气球</option><option value="fun/animal_parade">动物环绕</option><option value="fun/three_ball_juggling">三球抛接</option><option value="fun/butterflies_and_blossoms">头顶开花了</option><option value="fun/petting_a_cat">撸猫</option><option value="fun/jump_and_smash">跳起来拍东西</option><option value="fun/desk_tap">敲敲桌子</option><option value="fun/gravity_squash">压扁扁</option><option value="fun/jump_scare">被吓一跳</option></optgroup><optgroup label="鲸鱼小招"><option value="special/whale_bubbles">吐泡泡</option><option value="special/blue_whale_appears">蓝鲸现世</option><option value="special/whale_tail_slap">尾巴拍拍地</option></optgroup><optgroup label="小剧场"><option value="memes/eating_tokens">吃 Token</option><option value="memes/yeah_what_should_we_eat">是啊，吃什么？</option></optgroup><optgroup label="性格·嘴硬但藏不住"><option value="companion/waiting_denial">才没有等你</option><option value="companion/praise_hidden_joy">夸奖收到了</option><option value="companion/sneaky_glance">偷偷看你一眼</option><option value="companion/casual_closer">想贴近，又装路过</option><option value="companion/rice_share">这口分给你</option></optgroup><optgroup label="性格·慢半拍"><option value="food/caught_snacking">说好只吃一口……</option><option value="daily/startled_awake">我没睡着！</option><option value="companion/snack_stubborn">不用扶，我能行</option><option value="companion/thought_lost">思路突然断了</option><option value="companion/controller_search">找手柄找半天</option><option value="companion/tail_mess">尾巴又捣乱了</option><option value="companion/manual_scroll">认真研究说明书</option><option value="companion/hold_thought">意见先保留</option></optgroup><optgroup label="性格·两个人一起玩"><option value="companion/tense_watch">替你捏把汗</option><option value="companion/water_break">先别急，缓一下</option><option value="companion/second_controller">递来二号手柄</option><option value="companion/replay_tokens">复盘刚才那一下</option><option value="companion/saved_seat">给你留了位置</option><option value="companion/controller_break">手柄先没收了</option><option value="companion/come_reluctantly">我自己会过去</option><option value="companion/one_more_round">再来一局？</option></optgroup><optgroup label="性格·安静陪伴"><option value="companion/tail_nap">抱着尾巴打盹</option><option value="companion/apron_treasures">围裙里找东西</option><option value="companion/headphones_slip">耳机戴歪了</option><option value="companion/waterdrop_catch">接住小水滴</option><option value="companion/closing_ritual">收工小仪式</option><option value="companion/reluctant_pillow">勉强借你靠一下</option><option value="companion/claimed_spot">这块是我的位置</option></optgroup><optgroup label="性格·傲娇小剧场"><option value="companion/approval_nod">我批准了</option><option value="companion/praise_expected">还不快夸我</option><option value="companion/compliment_accepted">这还差不多</option><option value="companion/nerves_denied">才没有紧张</option><option value="companion/care_disguised">只是顺手准备的</option><option value="companion/advice_accepted">不服，但听进去了</option></optgroup></select><div class="action-buttons"><button id="perform-action" hidden>做这个</button><button id="random-action">随便来个</button><button id="feed-rice" title="说好只喂一口">喂一口🍚</button></div><small id="action-count">播完就回来陪你。</small></div></details>
+<details id="technical" name="settings"><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 13 4-4m-6 6-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m2 11a4 4 0 0 0 6 0l4-4a4 4 0 0 0-6-6l-1 1" transform="translate(1 1) scale(.9)"/></svg>连接</summary><div class="settings-popover"><div class="game-exit-options"><button id="exit-whale-game" disabled>退出鲸鱼游戏</button><label><input id="auto-exit-game" type="checkbox"> 我下线，她也下线</label><small id="game-status">只关她那边的游戏，桌宠还在</small></div><button id="mode" aria-pressed="true">游戏专注</button><button id="bind">绑定鲸鱼角色</button><div id="goal"></div><div id="budget"></div><div id="debug-error"></div><button id="new-trial" hidden>开始新一轮测试</button></div></details>
+</div>
+<div id="messages" aria-live="polite"></div>
+<form id="chat-form"><input id="chat" aria-label="和大肥鱼聊天" placeholder="说点什么…" maxlength="4000" autocomplete="off"><button aria-label="发送" title="发送"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 3-7 18-4-8-8-4zM10 13 21 3"/></svg></button></form>
+<footer>这里的聊天不会发到游戏里</footer>
+</section>
+<dialog id="character-sheet" aria-labelledby="character-name">
+<button id="close-character" aria-label="关闭人物小卡" title="合上人物小卡">×</button>
+<div class="card-subtitle">小档案 · 01</div>
+<img id="profile-art" alt="大肥鱼抱着白饭碗，坐在小毯子上">
+<h2 id="character-name">大肥鱼</h2><div class="card-subtitle">有白饭，有手柄，就差你了。</div>
+<div class="card-tags"><span>白饭守护者</span><span>慢半拍</span><span>认真靠谱</span></div>
+<p>“我有在想啦……饭也要趁热吃。”<br>偶尔犯懒，偶尔慢半拍。轮到正事，就认真陪你一起想办法。</p>
+<small>形象原作：ZipZipPipe《AI 娘化》；DeepSeek 基于上善原设。<br>本卡为你的 Q 版二创与 AI 生成配图，非作者官方人物卡。署名 · 非商用 · CC BY-NC-SA 4.0。</small>
+</dialog>
+</main>
+<script>
+let state, messageKey='', conversationListKey='', memoryListKey='', conversationChanging=false, focused=true;
+const $=id=>document.getElementById(id);
+const portraitSrc='/game-companion/art/portrait.png';
+$('portrait-card').onclick=()=>{
+  $('profile-art').src=portraitSrc;
+  $('character-sheet').showModal();
+};
+$('close-character').onclick=()=>$('character-sheet').close();
+let animatedPortrait=localStorage.getItem('companion-portrait-mode')==='animated';
+function applyPortraitMode(){
+  document.body.setAttribute('data-portrait-mode',animatedPortrait?'animated':'static');
+  $('portrait-static').setAttribute('aria-pressed',String(!animatedPortrait));
+  $('portrait-animated').setAttribute('aria-pressed',String(animatedPortrait));
+}
+$('portrait-static').onclick=()=>{animatedPortrait=false;localStorage.setItem('companion-portrait-mode','static');applyPortraitMode();};
+$('portrait-animated').onclick=()=>{animatedPortrait=true;localStorage.setItem('companion-portrait-mode','animated');applyPortraitMode();};
+applyPortraitMode();
+const actionChoices=[...$('pet-action').options].map(option=>option.value);
+$('action-count').textContent=actionChoices.length+' 个动作，播完就回来陪你。';
+// Saved per viewer only; a blocked storage just means no favourites or feeding count.
+function readSetting(key,fallback){try{const value=JSON.parse(localStorage.getItem(key)??'null');return value??fallback;}catch{return fallback;}}
+function writeSetting(key,value){try{localStorage.setItem(key,JSON.stringify(value));}catch{}}
+const actionLabels=new Map([...$('pet-action').options].map(option=>[option.value,option.textContent]));
+const actionGroups=[...($('pet-action').getElementsByTagName?.('optgroup')??[])].map(group=>({label:group.label,items:[...group.getElementsByTagName('option')].map(option=>option.value)}));
+let actionFavourites=[].concat(readSetting('companion-action-favourites',[])).filter(path=>actionLabels.has(path)),previewTimer;
+function clipSource(path){return path.startsWith('companion/')?'/game-companion/animations/'+path.slice(10)+'.webm':'/whale-pet/'+path+'.webm';}
+function previewAction(path){
+  clearTimeout(previewTimer);const video=$('action-preview');
+  if(!path){video.hidden=true;video.pause();video.removeAttribute('src');return;}
+  previewTimer=setTimeout(()=>{video.src=clipSource(path);video.hidden=false;video.play().catch(()=>{});},250);
+}
+function performAction(path){previewAction(null);petAnimator.perform(path);setPanel(false);}
+function renderActionGrid(){
+  const query=String($('action-search').value??'').trim();
+  const sections=[{label:'我的收藏',items:actionFavourites},...actionGroups].map(group=>{
+    const items=group.items.filter(path=>!query||actionLabels.get(path).includes(query)||path.includes(query));
+    if(!items.length)return null;
+    const section=document.createElement('section'),title=document.createElement('h3');title.textContent=group.label;section.append(title);
+    for(const path of items){
+      const chip=document.createElement('span'),play=document.createElement('button'),star=document.createElement('button'),saved=actionFavourites.includes(path);
+      chip.className='action-chip';play.textContent=actionLabels.get(path);
+      play.onclick=()=>performAction(path);play.onmouseenter=()=>previewAction(path);play.onmouseleave=()=>previewAction(null);
+      star.className='action-star';star.textContent=saved?'★':'☆';star.setAttribute('aria-label',(saved?'取消收藏：':'收藏：')+actionLabels.get(path));
+      star.onclick=()=>{actionFavourites=saved?actionFavourites.filter(item=>item!==path):[path,...actionFavourites];writeSetting('companion-action-favourites',actionFavourites);renderActionGrid();};
+      chip.append(play,star);section.append(chip);
+    }
+    return section;
+  }).filter(Boolean);
+  if(!sections.length){const empty=document.createElement('p');empty.textContent='没找到这个动作……换个词试试？';sections.push(empty);}
+  $('action-grid').replaceChildren(...sections);
+}
+$('action-search').oninput=renderActionGrid;renderActionGrid();
+let eatingUntil=0;
+$('feed-rice').onclick=()=>{
+  const today=new Date().toDateString(),saved=readSetting('companion-feed',{}),count=(saved.day===today?Number(saved.count)||0:0)+1;
+  writeSetting('companion-feed',{day:today,count});
+  const lines=count===1?['啊——呜。好吃！','嗯！白饭果然最好了。']:count===2?['再、再一口就好……','你喂饭的手法好熟练哦。']:['……说好只吃一口的。','这是第'+count+'口了吗？我没在数，真的。'];
+  performAction(count<=2?'food/eating_rice':'food/caught_snacking');eatingUntil=Date.now()+8000;
+  showBubble(lines[Math.floor(Math.random()*lines.length)]);
+  $('feed-rice').title='今天喂了 '+count+' 口';
+};
+function createVideoPlayer(first) {
+  let front=first, back=first.cloneNode(false), generation=0;
+  back.id='pet-buffer';back.removeAttribute('src');back.removeAttribute('autoplay');
+  first.classList.add('pet-layer','pet-front');back.classList.add('pet-layer');first.after(back);
+  const noMirror=new Set(['deep_thought','quick_nap','writing_the_fu_character','yeah_what_should_we_eat']);
+  const player={
+    onended:null,onerror:null,
+    start(src,loop,ready,seek=0){
+      const token=++generation, target=back;
+      target.pause();target.onloadeddata=null;target.onseeked=null;target.onended=null;
+      target.src=src;target.loop=loop;target.muted=true;target.playbackRate=1;
+      target.style.setProperty('--clip-facing',noMirror.has(src.split('/').at(-1).replace('.webm',''))?'1':'var(--pet-facing,1)');
+      const show=()=>{
+        if(token!==generation)return;
+        const old=front;old.id='pet-buffer';target.id='pet';
+        old.classList.remove('pet-front');target.classList.add('pet-front');
+        old.pause();front=target;back=old;
+        target.onended=()=>{if(token===generation&&target===front)player.onended?.();};
+        target.play().then(()=>{if(token===generation)ready?.();}).catch(()=>{if(token===generation)player.onerror?.();});
+      };
+      target.onloadeddata=()=>{
+        if(token!==generation)return;
+        if(seek){target.onseeked=()=>{target.onseeked=null;show();};target.currentTime=Math.min(seek,target.duration-0.1);}
+        else show();
+      };
+      target.onerror=()=>{if(token===generation)player.onerror?.();};
+      target.load();
+    }
+  };
+  return player;
+}
+function createPetAnimator(video, now=Date.now, random=Math.random, onRoam=()=>{}, onPoint=()=>{}, onTurn=()=>{}, chatClips=[]) {
+  const chatAnimations=new Set(chatClips);
+  const generalGames=["victory_smug", "victory_trophy", "victory_fistpump", "victory_mvp", "defeat_slump", "defeat_rage", "defeat_retry", "mistake_awkward", "combo_focus", "clutch_save", "keyboard_burst", "rhythm_tap", "precision_aim", "racing_turn", "teammate_cheer", "teammate_highfive", "teammate_praise", "teammate_comfort", "waiting_hourglass", "loading_bored", "low_battery", "new_record", "loot_choice", "ready_go", "waiting_denial", "praise_hidden_joy", "sneaky_glance", "casual_closer", "rice_share", "thought_lost", "controller_search", "tail_mess", "manual_scroll", "hold_thought", "tense_watch", "water_break", "second_controller", "replay_tokens", "saved_seat", "tail_nap", "apron_treasures", "headphones_slip", "waterdrop_catch", "closing_ritual", "approval_nod", "praise_expected", "compliment_accepted", "knew_it_notes", "nerves_denied", "snack_stubborn", "tiny_victory", "flourish_retry", "setup_pride", "claimed_spot", "controller_break", "care_disguised", "reluctant_pillow", "advice_accepted", "come_reluctantly", "one_more_round"];
+  const naturalGames=["combo_focus", "keyboard_burst", "rhythm_tap", "racing_turn", "waiting_hourglass", "loading_bored", "sneaky_glance", "tail_mess", "manual_scroll", "tail_nap", "apron_treasures", "headphones_slip", "waterdrop_catch"];
+  const quiet=[...naturalGames.map(name=>'companion/'+name),'companion/listening_nod','companion/bright_idea','companion/relieved','companion/controller_play','companion/card_strategy','idle/breathing','turn/looking_around','daily/big_stretch','special/whale_bubbles','daily/gentle_spin','music/carefree_humming',
+    'daily/mirror_check','daily/maid_curtsy','food/caught_snacking','food/eating_snacks','games/spinning_a_top','games/playing_with_a_toy_car',
+    'magic/card_magic','magic/flower_conjuring','magic/dove_magic','fun/petting_a_cat','fun/three_ball_juggling','fun/butterflies_and_blossoms','music/light_sway_dance'];
+  const pools={quiet,thinking:['work/deep_thought','work/taking_notes','games/solving_a_rubiks_cube'],
+    waiting:['idle/breathing','turn/looking_around','special/whale_bubbles','games/playing_gomoku','daily/big_stretch'],
+    playing:['work/taking_notes','work/deep_thought','companion/card_strategy','companion/controller_play']};
+  const starts={thinking:'work/deep_thought',playing:'work/taking_notes'};
+  const touches=['clicks/ticklish_giggle','clicks/shy_surprise','clicks/tsundere_pout','clicks/cheerful_wave'];
+  const emotions={happy_hop:'clicks/happy_hop',tsundere_pout:'clicks/tsundere_pout',shy_surprise:'clicks/shy_surprise',taking_notes:'work/taking_notes',
+    listening_nod:'companion/listening_nod',bright_idea:'companion/bright_idea',relieved:'companion/relieved',
+    controller_play:'companion/controller_play',card_strategy:'companion/card_strategy',shield_ready:'companion/shield_ready',
+    potion_offer:'companion/potion_offer',map_route:'companion/map_route',loot_proud:'companion/loot_proud',
+    ...Object.fromEntries(generalGames.map(name=>[name,'companion/'+name]))};
+  const contextOnly=new Set([...generalGames.filter(name=>!naturalGames.includes(name)).map(name=>'companion/'+name),'companion/shield_ready','companion/potion_offer','companion/map_route','companion/loot_proud']);
+  const moves=['moves/floating_steps','moves/crab_walk','moves/running_trip'];
+  let state,path='',mode='',reaction=null,dragging=false,listening=false,touch=0,talkUntil=0,seen=null;
+  let pointRunning=false,flinging=false,desktop=false,roaming=false,suspended=true,desktopClip=null;
+  let desktopNext=0,bag=[],catalog=[],lastDesktop='',desktopMode='natural',playToken=0,night=false,calm=false;
+  function play(next,loop=true,force=false,ready,seek=0){
+    if(next===path&&!force)return;
+    const token=++playToken;
+    onRoam(false);path=next;
+    const loaded=()=>{if(token===playToken)ready?.();};
+    const src=next.startsWith('companion/')?'/game-companion/animations/'+next.slice(10)+'.webm':'/whale-pet/'+next+'.webm';
+    if(video.start)video.start(src,loop,loaded,seek);
+    else {video.loop=loop;video.src=src;video.currentTime=seek;video.play().catch(()=>{});loaded();}
+  }
+  function choose(pool,exclude=path){const choices=pool.filter(item=>item!==exclude);return (choices.length?choices:pool)[Math.floor(random()*(choices.length||pool.length))];}
+  function nextDesktopClip(){
+    if(desktopMode==='natural'){
+      // Focus time keeps her still; late at night she gets drowsy.
+      if(calm)return choose(['idle/breathing','idle/breathing','work/taking_notes','companion/tail_nap','music/carefree_humming'],lastDesktop);
+      if(night&&random()<0.4)return choose(['daily/sleepy_yawn','daily/quick_nap','companion/tail_nap','daily/startled_awake'],lastDesktop);
+      const roll=random(),acts=catalog.filter(item=>! /^(idle|turn|moves|clicks|drag)\//.test(item)&&!contextOnly.has(item));
+      if(roll<0.3)return 'idle/breathing';
+      if(roll<0.4)return 'turn/looking_around';
+      if(roll>=0.8&&roaming)return random()<0.5?'moves/target_point_run':choose(moves);
+      return choose(acts,lastDesktop)||'idle/breathing';
+    }
+    if(!bag.length){
+      bag=[...catalog];
+      for(let i=bag.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[bag[i],bag[j]]=[bag[j],bag[i]];}
+      if(bag.length>1&&bag.at(-1)===lastDesktop)[bag[0],bag[bag.length-1]]=[bag[bag.length-1],bag[0]];
+    }
+    return bag.pop();
+  }
+  function cancelPoint(){if(pointRunning){pointRunning=false;onPoint('cancel');}}
+  function render(){
+    const time=now();
+    if(pointRunning&&(dragging||suspended||!state?.scheduler?.paused||state.scheduler.active))cancelPoint();
+    if(pointRunning)return;
+    if(flinging&&(suspended||!state?.scheduler?.paused||state.scheduler.active)){flinging=false;reaction=null;}
+    if(flinging)return;
+    const desktopReady=desktop&&!suspended&&state?.scheduler?.paused&&!state.scheduler.active;
+    if(desktopClip&&(!desktopReady||dragging||listening||reaction||time<talkUntil)){
+      desktopClip=null;onRoam(false);mode='';desktopNext=time;
+    }
+    if(dragging){play('drag/dragged_in_midair');return;}
+    if(reaction){play(reaction,false);return;}
+    if(listening||time<talkUntil){mode='listening';play('daily/attentive_listening');return;}
+    if(desktopReady){
+      if(desktopClip)return;
+      if(time>=desktopNext&&catalog.length){
+        desktopClip=nextDesktopClip();lastDesktop=desktopClip;
+        const moving=desktopMode==='natural'&&roaming&&desktopClip.startsWith('moves/');
+        play(desktopClip,false,true,moving?()=>onRoam(desktopClip):undefined);
+      }else play('idle/breathing');
+      return;
+    }
+    const s=state?.scheduler,o=state?.observation;
+    const nextMode=s?.active?'thinking':s&&!s.paused?(o?.actionable?'playing':'waiting'):'quiet';
+    if(mode!==nextMode){mode=nextMode;play(starts[mode]||'idle/breathing',false);return;}
+    if(!path)play(choose(pools[mode]),false);
+  }
+  function react(next,seek=0){desktopClip=null;onRoam(false);reaction=next;play(next,false,true,undefined,seek);}
+  video.onended=()=>{
+    const ended=path;
+    if(pointRunning){pointRunning=false;onPoint('complete');react('clicks/arrival_wave');return;}
+    if(flinging)return;
+    if(ended==='turn/looking_around'&&desktopMode==='natural')onTurn();
+    path='';
+    if(desktopClip){
+      desktopClip=null;onRoam(false);
+      desktopNext=now()+(desktopMode==='showcase'?2000:0);render();return;
+    }
+    if(reaction){reaction=null;mode='';}
+    render();
+  };
+  video.onerror=()=>{
+    cancelPoint();flinging=false;desktopClip=null;onRoam(false);
+    desktopNext=now()+5000;reaction=null;mode='quiet';
+    if(path!=='idle/breathing')play('idle/breathing');
+  };
+  const api={
+    update(value){
+      if(state?.sessionId!==value.sessionId){seen=null;reaction=null;talkUntil=0;}
+      state=value;
+      const fresh=seen?value.messages.filter(m=>m.role==='assistant'&&m.id&&!seen.has(m.id)&&now()-m.at<15000):[];
+      seen=new Set(value.messages.map(m=>m.id));
+      const expressive=fresh.findLast(m=>!m.detail&&(chatAnimations.has(m.animation)||emotions[m.emotion]));
+      if(expressive&&!dragging&&!pointRunning&&!flinging)react(chatAnimations.has(expressive.animation)?expressive.animation:emotions[expressive.emotion]);
+      else if(fresh.some(m=>!m.detail))talkUntil=now()+6000;
+      render();
+    },
+    touch(){if(!dragging){flinging=false;react(touches[touch++%touches.length]);}},
+    drag(value){dragging=value;flinging=false;reaction=null;mode='';if(!value)play('idle/breathing',false,true);render();},
+    fling(){cancelPoint();dragging=false;flinging=true;react('drag/turn_into_ball',2);},
+    settle(){flinging=false;reaction=null;mode='';play('idle/breathing',false,true);render();},
+    listen(value){listening=value;render();},
+    speaking(){talkUntil=now()+10000;render();},
+    quiet(){talkUntil=0;render();},
+    perform(next){cancelPoint();flinging=false;react(next);},
+    pointRun(){
+      if(suspended||!state?.scheduler?.paused||state.scheduler.active)return false;
+      flinging=false;desktopClip=null;reaction=null;pointRunning=true;
+      play('moves/target_point_run',false,true,()=>onPoint('start'));return true;
+    },
+    cancelPoint(){cancelPoint();mode='';render();},
+    roamBlocked(){desktopClip=null;onRoam(false);react('turn/looking_around');},
+    desktop(enabled,paths,walk,style='natural'){
+      cancelPoint();flinging=false;desktop=enabled;catalog=paths;roaming=walk;desktopMode=style;
+      desktopClip=null;reaction=null;onRoam(false);bag=[];desktopNext=now();mode='';render();
+    },
+    suspend(value){suspended=value;render();},
+    mood(isNight,isCalm){night=isNight;calm=isCalm;},
+    tick:render
+  };
+  react('clicks/arrival_wave');return api;
+}
+
+let roamingClip=false;
+const petAnimator=createPetAnimator(createVideoPlayer($('pet')),Date.now,Math.random,moving=>{
+  if(moving===roamingClip)return;
+  roamingClip=moving;
+  window.dispatchEvent(new CustomEvent('companion-roam',{detail:moving}));
+},status=>window.dispatchEvent(new CustomEvent('companion-point-motion',{detail:status})),
+()=>window.dispatchEvent(new CustomEvent('companion-turn')),actionChoices);
+let desktopEnabled=false;
+$('free-roam').checked=localStorage.getItem('companion-free-roam')==='on';
+$('desktop-mode').value=localStorage.getItem('companion-desktop-mode')==='showcase'?'showcase':'natural';
+$('desktop-mode').onchange=()=>{localStorage.setItem('companion-desktop-mode',$('desktop-mode').value);syncDesktop();};
+function syncDesktop() {
+  window.dispatchEvent(new CustomEvent('companion-motion-stop'));
+  $('desktop-play').textContent=desktopEnabled?'停止桌面陪伴':'开始桌面陪伴';
+  $('desktop-play').setAttribute('aria-pressed',String(desktopEnabled));
+  const showcase=$('desktop-mode').value==='showcase';
+  $('free-roam').disabled=showcase;
+  $('desktop-mode-hint').textContent=showcase?'全部 '+actionChoices.length+' 个动作原地展示，播完稍歇。':'自然待机、转身和小动作；开启自由跑动后会走动、偶尔靠近鼠标。';
+  petAnimator.desktop(desktopEnabled,actionChoices,$('free-roam').checked,$('desktop-mode').value);
+  if(state)render(state);
+}
+async function startDesktop(){
+  if(!state)return;
+  if(!await control('pause'))return;
+  desktopEnabled=true;syncDesktop();setPanel(false);
+}
+$('desktop-play').onclick=()=>{
+  if(desktopEnabled){desktopEnabled=false;syncDesktop();}else void startDesktop();
+};
+$('free-roam').onchange=()=>{localStorage.setItem('companion-free-roam',$('free-roam').checked?'on':'off');syncDesktop();};
+window.addEventListener('companion-desktop-start',async()=>{await initialState;void startDesktop();});
+window.addEventListener('companion-facing',event=>$('stage').style.setProperty('--pet-facing',event.detail));
+window.addEventListener('companion-roam-blocked',()=>petAnimator.roamBlocked());
+// The window itself travels while she moves, so the quick-chat box must not ride along.
+let petMoving=false;
+function setPetMoving(moving){petMoving=Boolean(moving);if(petMoving)hideQuickChat();}
+window.addEventListener('companion-roam',event=>setPetMoving(event.detail));
+window.addEventListener('companion-point-motion',event=>setPetMoving(event.detail==='start'));
+window.addEventListener('companion-fling',()=>{setPetMoving(true);petAnimator.fling();});
+window.addEventListener('companion-settle',()=>{setPetMoving(false);petAnimator.settle();});
+window.addEventListener('companion-pick-point',()=>{
+  if(!state?.scheduler?.paused||state.scheduler.active){showBubble('先暂停一下，再带我挪窝吧。');return;}
+  hideQuickChat();setPanel(false);window.dispatchEvent(new CustomEvent('companion-pick-ready'));
+});
+window.addEventListener('companion-point-run',()=>{if(!petAnimator.pointRun())window.dispatchEvent(new CustomEvent('companion-point-motion',{detail:'cancel'}));});
+window.addEventListener('companion-point-stop',()=>petAnimator.cancelPoint());
+window.addEventListener('companion-point-error',()=>showBubble('这次没选好位置，再右键点我试一下。'));
+// Focus and quiet time only silence her own chatter; replies to the user still come through.
+let focusUntil=Number(readSetting('companion-focus-until',0))||0,quietUntil=Number(readSetting('companion-quiet-until',0))||0,quietKey='';
+let visionPausedUntil=Number(readSetting('companion-vision-paused-until',0))||0,visionBadgeTimer;
+if(focusUntil<=Date.now())focusUntil=0;
+if(quietUntil<=Date.now())quietUntil=0;
+const isNight=()=>new Date().getHours()<6;
+let fullscreenQuiet=false,pendingReminder=null;
+const quietActive=()=>fullscreenQuiet||Date.now()<Math.max(focusUntil,quietUntil);
+const clockText=ms=>{const seconds=Math.max(0,Math.ceil(ms/1000));return Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0');};
+function syncQuiet(){
+  const time=Date.now();
+  if(focusUntil&&time>=focusUntil){
+    focusUntil=0;writeSetting('companion-focus-until',0);
+    petAnimator.perform('companion/teammate_cheer');showBubble('叮——专注时间到！辛苦啦，起来喝口水、伸个懒腰吧。');
+  }
+  if(quietUntil&&time>=quietUntil){quietUntil=0;writeSetting('companion-quiet-until',0);}
+  if(visionPausedUntil&&time>=visionPausedUntil){visionPausedUntil=0;writeSetting('companion-vision-paused-until',0);}
+  $('vision-pause').textContent=visionPausedUntil?'现在可以看了':'一小时内别看';
+  $('focus-badge').hidden=!focusUntil;$('focus-badge').textContent=focusUntil?'🍅 '+clockText(focusUntil-time):'';
+  $('focus-start').textContent=focusUntil?'结束专注':'🍅 专注 25 分钟';
+  $('quiet-hour').textContent=quietUntil?'取消免打扰':'免打扰 1 小时';
+  $('focus-status').textContent=focusUntil?'专注中，还剩 '+Math.ceil((focusUntil-time)/60000)+' 分钟。我在旁边安静陪着。':quietUntil?'免打扰到 '+new Date(quietUntil).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})+'，这段时间我不主动搭话。':'专注和免打扰时她都安静陪着，不主动搭话。';
+  petAnimator.mood(isNight(),Boolean(focusUntil));
+  if(pendingReminder&&!quietActive())remind(pendingReminder);
+  // A string detail, because object details do not cross into the isolated preload world.
+  const key=focusUntil+','+quietUntil+','+visionPausedUntil;
+  if(quietKey!==key){quietKey=key;window.dispatchEvent(new CustomEvent('companion-quiet-state',{detail:quietKey}));}
+}
+function setFocus(on){focusUntil=on?Date.now()+25*60000:0;writeSetting('companion-focus-until',focusUntil);if(on)showBubble('好，开始专注！我不吵你，就在旁边陪着。');syncQuiet();if(state)render(state);}
+function setQuiet(on){quietUntil=on?Date.now()+60*60000:0;writeSetting('companion-quiet-until',quietUntil);syncQuiet();if(state)render(state);}
+$('focus-start').onclick=()=>setFocus(!focusUntil);
+$('quiet-hour').onclick=()=>setQuiet(!quietUntil);
+function setVisionPause(on){visionPausedUntil=on?Date.now()+60*60000:0;writeSetting('companion-vision-paused-until',visionPausedUntil);syncQuiet();if(on)showBubble('好，接下来一小时我不看你屏幕。');}
+$('vision-pause').onclick=()=>setVisionPause(!visionPausedUntil);
+// Reminders arrive from the overlay, which only counts time the user is at the computer.
+const reminders={
+  water:{clip:'companion/water_break',lines:['喝口水吧……我刚刚也喝了，所以你也要喝。','叮，补水时间！杯子是不是又空啦？','你看，我都去接水了，你也一起嘛。']},
+  stretch:{clip:'daily/big_stretch',lines:['坐好久了哦，站起来伸个懒腰？我陪你一起。','肩膀是不是硬了……起来晃两下再回来。','嗯——（伸懒腰）你也来，就三十秒。']},
+  late:{clip:'daily/sleepy_yawn',lines:['已经好晚了……你不困吗？我、我反正有点困了。','这个点还亮着屏幕……明天会起不来的哦。','再不睡我就先抱着尾巴睡了。']}
+};
+for(const kind of Object.keys(reminders)){
+  const box=$('health-'+kind);box.checked=readSetting('companion-health-'+kind,true)!==false;
+  box.onchange=()=>writeSetting('companion-health-'+kind,box.checked);
+}
+function remind(kind){
+  const reminder=reminders[kind];
+  if(!reminder||!$('health-'+kind).checked)return;
+  if(quietActive()){pendingReminder=kind;return;}
+  pendingReminder=null;petAnimator.perform(reminder.clip);
+  showBubble(reminder.lines[Math.floor(Math.random()*reminder.lines.length)]);
+}
+window.addEventListener('companion-health',event=>remind(String(event.detail)));
+// String details, because object details do not cross into the isolated preload world.
+const syncDesktopPrefs=()=>window.dispatchEvent(new CustomEvent('companion-desktop-prefs',{detail:($('stroll').checked?'1':'0')+','+($('fullscreen-hide').checked?'1':'0')}));
+$('stroll').checked=readSetting('companion-stroll',false)===true;
+$('fullscreen-hide').checked=readSetting('companion-fullscreen-hide',true)!==false;
+$('stroll').onchange=()=>{writeSetting('companion-stroll',$('stroll').checked);syncDesktopPrefs();};
+$('fullscreen-hide').onchange=()=>{writeSetting('companion-fullscreen-hide',$('fullscreen-hide').checked);syncDesktopPrefs();};
+window.addEventListener('companion-fullscreen',event=>{fullscreenQuiet=event.detail===true;syncQuiet();if(state)render(state);});
+window.addEventListener('companion-perched',()=>{petAnimator.perform('companion/claimed_spot');showBubble('嘿咻——这块是我的位置了。窗口别乱动哦。');});
+window.addEventListener('companion-perch-failed',()=>showBubble('这个窗口太高了，或者我还没看清是哪个……先点一下那个窗口，再叫我爬上去。'));
+// Rubbing back and forth over her head, without pressing, counts as a head pat.
+const pat={x:null,dir:0,turns:0,start:0,last:0,until:0};
+$('pet-hit').addEventListener('mousemove',event=>{
+  if(event.buttons||!document.body.classList.contains('compact'))return;
+  const box=$('pet-hit').getBoundingClientRect(),time=Date.now();
+  if(event.clientY>box.top+box.height*0.45||time<pat.until){pat.x=null;return;}
+  const dir=pat.x===null?0:Math.sign(event.clientX-pat.x);pat.x=event.clientX;
+  if(!dir)return;
+  if(time-pat.last>350){pat.dir=dir;pat.turns=0;pat.start=time;}
+  pat.last=time;
+  if(dir!==pat.dir){pat.dir=dir;pat.turns++;}
+  if(pat.turns>=4&&time-pat.start<2500){pat.until=time+8000;pat.turns=0;headPat();}
+});
+function headPat(){
+  const today=new Date().toDateString(),saved=readSetting('companion-pats',{});
+  const count=(saved.day===today?saved.count:0)+1;writeSetting('companion-pats',{day:today,count});
+  const lines=count>6?['今天被摸了好多次……会变笨的。……其实也没关系啦。']:['唔……头发要被揉乱啦。','再、再摸一下也不是不行……','嘿嘿……啊不对，我才没有很开心。','被摸头了。今天的饭可以多吃一口吗？'];
+  petAnimator.perform(['companion/praise_hidden_joy','clicks/ticklish_giggle','clicks/shy_surprise'][Math.floor(Math.random()*3)]);
+  showBubble(lines[Math.floor(Math.random()*lines.length)]);
+}
+window.addEventListener('companion-vision-capture',()=>{
+  clearTimeout(visionBadgeTimer);$('vision-badge').hidden=false;
+  visionBadgeTimer=setTimeout(()=>{$('vision-badge').hidden=true;},5000);
+});
+$('edge-peek').checked=readSetting('companion-edge-peek',false)===true;
+$('edge-peek').onchange=()=>{writeSetting('companion-edge-peek',$('edge-peek').checked);window.dispatchEvent(new CustomEvent('companion-edge-peek',{detail:$('edge-peek').checked}));};
+window.dispatchEvent(new CustomEvent('companion-edge-peek',{detail:$('edge-peek').checked}));
+window.addEventListener('companion-tray',event=>{
+  if(event.detail==='open-chat'){setPanel(true);$('chat').focus();}
+  else if(event.detail==='focus')setFocus(!focusUntil);
+  else if(event.detail==='quiet')setQuiet(!quietUntil);
+  else if(event.detail==='vision-pause')setVisionPause(!visionPausedUntil);
+  else if(event.detail==='stroll'){$('stroll').checked=!$('stroll').checked;$('stroll').onchange();}
+  else if(event.detail==='edge-peek'){$('edge-peek').checked=!$('edge-peek').checked;$('edge-peek').onchange();}
+});
+let quietWasActive=quietActive();
+function animationTick(){
+  petAnimator.tick();syncQuiet();
+  if(quietWasActive!==quietActive()){quietWasActive=quietActive();if(state)render(state);}
+  setTimeout(animationTick,500);
+}
+animationTick();
+$('perform-action').onclick=()=>performAction($('pet-action').value);
+$('random-action').onclick=()=>performAction(actionChoices[Math.floor(Math.random()*actionChoices.length)]);
+window.addEventListener('companion-panel',event=>petAnimator.suspend(event.detail||document.body.classList.contains('quick-chat-open')));
+window.addEventListener('companion-drag',event=>petAnimator.drag(event.detail));
+$('chat').onfocus=()=>petAnimator.listen(true);
+$('chat').onblur=()=>petAnimator.listen(false);
+document.body.classList.add('focus','compact');
+const savedSize=Number(localStorage.getItem('companion-pet-size')??100);
+$('pet-size').value=String(Number.isFinite(savedSize)?Math.min(160,Math.max(60,savedSize)):100);
+function applyPetSize(){
+  const size=Number($('pet-size').value);
+  document.body.style.setProperty('--pet-scale',String(size/100));
+  $('pet-size-value').textContent=size+'%';
+  localStorage.setItem('companion-pet-size',String(size));
+}
+$('pet-size').oninput=applyPetSize;applyPetSize();
+let bubbleTimer, bubbleMessageId=null, bubbleVoiceId=null, bubbleDeadline=0;
+function scheduleBubbleFade() {
+  clearTimeout(bubbleTimer);
+  if(bubbleVoiceId!==null&&bubbleVoiceId===bubbleMessageId)return;
+  bubbleTimer=setTimeout(()=>$('speech-bubble').classList.remove('visible'),Math.max(0,bubbleDeadline-Date.now()));
+}
+function showBubble(text, messageId=null) {
+  const bubble=$('speech-bubble');
+  const characters=Array.from(text.replace(/\s+/gu,' ').trim());
+  bubbleMessageId=messageId;
+  $('bubble-text').textContent=characters.length>120?characters.slice(0,119).join('')+'…':characters.join('');
+  bubble.classList.add('visible');
+  bubbleDeadline=Date.now()+Math.min(36000,Math.max(12000,4000+Array.from($('bubble-text').textContent).length*260));
+  scheduleBubbleFade();
+}
+function setPanel(open){if(open)hideQuickChat();document.body.classList.toggle('compact',!open);petAnimator.suspend(open);}
+$('pet-hit').onclick=()=>{petAnimator.touch();setPanel(true);};
+$('hide-panel').onclick=()=>setPanel(false);
+let quickTimer,quickComposing=false;
+function hideQuickChat(){
+  const wasOpen=document.body.classList.contains('quick-chat-open');
+  clearTimeout(quickTimer);document.body.classList.remove('quick-chat-open');
+  $('quick-chat').inert=true;$('quick-chat').setAttribute('aria-hidden','true');
+  petAnimator.suspend(!document.body.classList.contains('compact'));
+  if(wasOpen)window.dispatchEvent(new CustomEvent('companion-quick-closed'));
+}
+function quickNear(near){
+  clearTimeout(quickTimer);
+  if(!document.body.classList.contains('compact')||(near&&petMoving))return;
+  if(near){quickTimer=setTimeout(()=>{
+    document.body.classList.add('quick-chat-open');$('quick-chat').inert=false;
+    $('quick-chat').setAttribute('aria-hidden','false');petAnimator.suspend(true);
+    window.dispatchEvent(new CustomEvent('companion-motion-stop'));
+  },140);}
+  else if(document.activeElement!==$('quick-message'))quickTimer=setTimeout(hideQuickChat,650);
+}
+window.addEventListener('companion-pet-near',event=>quickNear(event.detail===true));
+$('quick-chat').onmouseenter=()=>quickNear(true);
+$('quick-chat').onmouseleave=()=>quickNear(false);
+$('quick-message').onfocus=()=>{clearTimeout(quickTimer);petAnimator.suspend(true);};
+$('quick-message').onblur=()=>{quickComposing=false;quickNear(false);};
+$('quick-message').addEventListener('compositionstart',()=>quickComposing=true);
+$('quick-message').addEventListener('compositionend',()=>quickComposing=false);
+$('quick-message').onkeydown=event=>{
+  if(event.key==='Enter'&&(event.isComposing||quickComposing)){event.preventDefault();return;}
+  if(event.key==='Escape'&&!event.isComposing){event.preventDefault();event.stopPropagation();$('quick-message').blur();hideQuickChat();}
+};
+$('quick-chat').onsubmit=async event=>{
+  event.preventDefault();if(quickComposing)return;
+  const input=$('quick-message'),text=input.value.trim();if(!text)return;
+  const button=$('quick-send');button.disabled=true;$('quick-chat-status').textContent='';
+  try{if(await control('chat',{text})){if(input.value.trim()===text)input.value='';input.blur();hideQuickChat();}
+    else $('quick-chat-status').textContent='这句没送到，再试一下？';}
+  finally{button.disabled=false;}
+};
+let voiceEnabled=localStorage.getItem('companion-voice')==='on', audio=null, audioUrl=null, voiceRequest=null, seenMessages=null;
+let ambientVoice=false;
+window.addEventListener('companion-activity-invalid',()=>{if(ambientVoice)stopVoice();});
+function stopVoice() {
+  ambientVoice=false;
+  voiceRequest?.abort();voiceRequest=null;
+  if(audio){audio.pause();audio.src='';audio=null;}
+  if(audioUrl){URL.revokeObjectURL(audioUrl);audioUrl=null;}
+  $('voice-status').textContent='';
+  petAnimator.quiet();
+  if(bubbleVoiceId!==null&&bubbleVoiceId===bubbleMessageId){
+    bubbleDeadline=Math.max(bubbleDeadline,Date.now()+4000);
+    bubbleVoiceId=null;scheduleBubbleFade();
+  }else bubbleVoiceId=null;
+}
+async function speak(message, preview=false, emotionPreset=null) {
+  // Missed lines stay in text: never queue speech or interrupt an earlier line.
+  if((!voiceEnabled&&!preview)||voiceRequest||audio||Date.now()-message.at>15000)return;
+  const request=new AbortController();voiceRequest=request;
+  ambientVoice=message.ambient===true;
+  if(!preview&&message.id===bubbleMessageId){bubbleVoiceId=message.id;clearTimeout(bubbleTimer);}
+  $('voice-status').textContent='大肥鱼准备开口…';
+  try {
+    let body={messageId:message.id};
+    if(preview)body=emotionPreset?{emotionPreview:emotionPreset}:{preview:true};
+    const response=await fetch('/game-companion/voice',{method:'POST',headers:{'content-type':'application/json','x-companion-control':'1'},body:JSON.stringify(body),signal:request.signal});
+    if(!response.ok){const problem=await response.json();throw new Error(problem.error);}
+    const blob=await response.blob();
+    if(request.signal.aborted||(!voiceEnabled&&!preview))return;
+    if(!preview&&Date.now()-message.at>15000){stopVoice();return;}
+    audioUrl=URL.createObjectURL(blob);audio=new Audio(audioUrl);audio.volume=Number($('volume').value);
+    audio.onended=()=>{if(voiceRequest===request)stopVoice();};
+    audio.onerror=()=>{if(voiceRequest===request){stopVoice();$('voice-status').textContent='声音播放中断，文字仍可正常查看。';}};
+    await audio.play();petAnimator.speaking();$('voice-status').textContent='';
+  } catch(error) {
+    if(!request.signal.aborted){stopVoice();$('voice-status').textContent=error.message==='VOICE_TEXT_TOO_LONG'?'这句较长，先看文字吧。':'这次没能出声，文字仍可正常查看。';}
+  }
+}
+async function control(action, extra={}) {
+  if(['pause','chat','new-conversation','switch-conversation','delete-conversation'].includes(action))stopVoice();
+  const switching=['new-conversation','switch-conversation','delete-conversation'].includes(action);
+  if(switching){conversationChanging=true;$('new-conversation').disabled=true;$('conversation-list').disabled=true;}
+  try {
+    const r=await fetch('/game-companion/control',{method:'POST',headers:{'content-type':'application/json','x-companion-control':'1'},body:JSON.stringify({action,...extra})});
+    const result=await r.json();if(!r.ok)throw new Error(result.error);render(result);return true;
+  } catch(e){$('error').textContent='这一步没完成，请展开详情查看。';$('debug-error').textContent=e.message;return false;}
+  finally{if(switching){conversationChanging=false;$('new-conversation').disabled=Boolean(state.conversationBusy);$('conversation-list').disabled=Boolean(state.conversationBusy);$('conversation-list').value=state.sessionId;}}
+}
+function render(value) {
+  const ambientEnabled=value.ambient?.enabled===true;
+  $('ambient-enabled').checked=ambientEnabled;
+  $('ambient-vision').checked=value.ambient?.visionEnabled===true;
+  const range=`${value.ambient?.minMinutes??5},${value.ambient?.maxMinutes??10}`;
+  if(document.activeElement!==$('ambient-min')&&document.activeElement!==$('ambient-max')){
+    if($('ambient-frequency').value!=='custom')$('ambient-frequency').value=['15,30','5,10','2,5'].includes(range)?range:'custom';
+    $('ambient-min').value=String(value.ambient?.minMinutes??5);$('ambient-max').value=String(value.ambient?.maxMinutes??10);
+  }
+  $('ambient-custom').hidden=$('ambient-frequency').value!=='custom';
+  window.dispatchEvent(new CustomEvent('companion-activity',{detail:ambientEnabled&&value.scheduler?.paused===true&&!quietActive()}));
+  if(state?.sessionId&&value.sessionId!==state.sessionId){
+    stopVoice();seenMessages=null;messageKey='';clearTimeout(bubbleTimer);
+    $('speech-bubble').classList.remove('visible');$('chat').value='';
+  }
+  if(!value.scheduler?.paused||value.scheduler.active)window.dispatchEvent(new CustomEvent('companion-motion-stop'));
+  if(state && !state.scheduler?.paused && value.scheduler?.paused)stopVoice();
+  state=value;const s=state.scheduler, o=state.observation;
+  const conversations=value.conversations??[{sessionId:value.sessionId,title:'当前对话'}];
+  const conversationKey=JSON.stringify(conversations);
+  if(conversationListKey!==conversationKey){
+    conversationListKey=conversationKey;
+    $('conversation-list').replaceChildren(...conversations.map(item=>{
+      const option=document.createElement('option');option.value=item.sessionId;option.textContent=item.title;return option;
+    }));
+  }
+  $('conversation-list').value=value.sessionId;
+  $('conversation-list').disabled=Boolean(value.conversationBusy);
+  $('new-conversation').disabled=Boolean(value.conversationBusy);
+  $('new-conversation').title=value.conversationBusy?'等我回完这句，再开新对话':'保留这段聊天，开始独立的新对话';
+  $('delete-conversation').disabled=Boolean(value.conversationBusy);
+  const entries=value.personalMemory?.entries??[],memoryKey=JSON.stringify(entries);
+  if(memoryKey!==memoryListKey){
+    memoryListKey=memoryKey;
+    $('memory-list').replaceChildren(...(entries.length?entries.map(entry=>{
+      const item=document.createElement('li'),text=document.createElement('span'),remove=document.createElement('button');
+      text.textContent=entry.text;remove.textContent='忘掉';remove.title='让她忘掉这一条';
+      remove.onclick=()=>control('forget-memory',{id:entry.id});item.append(text,remove);return item;
+    }):[Object.assign(document.createElement('li'),{className:'memory-empty',textContent:'还没有特意记住的事。'})]));
+  }
+  const needsReconciliation=Boolean(o?.guard?.requires_reconciliation);
+  $('status').textContent=s?.active?'认真想…':state.error==='TRANSPORT_ERROR'?'游戏未连接 · 控制已暂停':s?.paused?'已暂停，等你安排':o?.actionable?'正在配合你行动':'等待队友或游戏变化';
+  $('error').textContent=state.error==='TRANSPORT_ERROR'?'游戏暂时没连上，我先等一会儿。':state.error==='BINDING_CHANGED'?'换了游戏席位，点「连接」重新绑定一下。':state.error?'大肥鱼这边卡住了，先暂停看看。':state.budget?.limitReason?'这轮额度用完了，去「连接」里开新一轮吧。':'';
+  $('debug-error').textContent=state.error||'';
+  if(desktopEnabled&&s?.paused&&!s?.active){
+    $('status').textContent=s.faulted?'聊天暂时没接上，可以重新发一句':focusUntil?'专注中 · 我安静陪着':quietUntil?'免打扰中 · 有事叫我':$('desktop-mode').value==='showcase'?'全部动画展示 · 也可以聊天':'自然陪伴 · 我在这里陪你';
+    if(!state.error||state.error==='TRANSPORT_ERROR')$('error').textContent='';
+  }
+  if(needsReconciliation){
+    $('status').textContent='先等一下，上一招还需要核对';
+    $('error').textContent='上一步还没确认生效，我先停手。聊天不受影响。';
+    $('debug-error').textContent='待核对动作：'+o.guard.pending_action_id;
+  }
+  $('goal').textContent=s?.goal?'当前目标：'+s.goal:'';
+  setExpression(Date.now()<eatingUntil?'eat':s?.active?'think':state.error&&state.error!=='TRANSPORT_ERROR'?'pout':isNight()?'sleepy':'');
+  $('bind').disabled=state.error==='TRANSPORT_ERROR'||!o?.guard?.local_player_id||!o?.guard?.run_id||s?.active;
+  $('bind').hidden=focused&&state.bindingConfirmed;
+  const budget=state.budget;
+  $('resume').disabled=!state.bindingConfirmed||s?.active||Boolean(budget?.limitReason)||needsReconciliation;
+  $('resume').hidden=Boolean(s&&!s.paused);$('pause').hidden=Boolean(s?.paused&&!s.active);
+  const reasons={'time-limit':'本轮时间已到','request-limit':'本轮调用次数已用完','budget-persistence-error':'预算记录保存失败'};
+  $('budget').textContent=budget?.startedAt!=null ? `本轮模型调用 ${budget.requestCount}/100 · ${budget.limitReason?(reasons[budget.limitReason]||budget.limitReason):'剩余 '+Math.max(0,Math.ceil((budget.deadlineAt-Date.now())/60000))+' 分钟'}` : '首次继续合作时开始计时：30 分钟 / 最多 100 次模型调用';
+  $('new-trial').hidden=budget?.startedAt==null;
+  $('new-trial').disabled=!s?.paused||s?.active;
+  $('bind').textContent=o?.guard?.local_player_id?'绑定鲸鱼角色（'+o.guard.local_player_id+'）':'绑定鲸鱼角色';
+  const key=JSON.stringify([state.messages,state.chatDelivery,focused]);
+  const deliveryLabels={queued:'排队中',dispatching:'发送中',inbox:'已送达',consumed:'已读',canceled:'没发出去，需要的话再发一次',uncertain:'可能没送到，不会自动重发'};
+  if(key!==messageKey){messageKey=key;const notice=[];
+    if(state.messages.length>=100)notice.push(Object.assign(document.createElement('p'),{className:'history-note',textContent:'更早的聊天已经收起，这里只留最近 100 条。'}));
+    $('messages').replaceChildren(...notice,...state.messages.map((m,index)=>{
+    const article=document.createElement('article');article.className=m.role+(state.messages[index-1]?.role===m.role?' continued':'');
+    if(focused&&m.detail){
+      const full=document.createElement('details'),summary=document.createElement('summary'),text=document.createElement('div');summary.textContent='补充说明';text.textContent=m.text;full.append(summary,text);article.append(full);
+    }else if(focused&&m.role==='assistant'&&m.text.length>180){
+      const preview=document.createElement('span');preview.textContent=m.text.slice(0,150)+'…';
+      const full=document.createElement('details'),summary=document.createElement('summary'),text=document.createElement('div');summary.textContent='展开这条回复';text.textContent=m.text;full.append(summary,text);article.append(preview,full);
+    }else article.textContent=m.text;
+    const delivery=state.chatDelivery?.find(d=>d.id===m.id);
+    if(delivery){const label=document.createElement('small');label.className=delivery.needsConfirmation?'delivery-warning':'delivery';label.textContent=deliveryLabels[delivery.status]||delivery.status;article.append(label);}
+    return article}));$('messages').scrollTop=$('messages').scrollHeight;}
+  const newReplies=seenMessages?state.messages.filter(m=>m.role==='assistant'&&!m.detail&&m.id&&!seenMessages.has(m.id)):[];
+  if(newReplies.length)showBubble(newReplies.at(-1).text,newReplies.at(-1).id);
+  const fresh=seenMessages?state.messages.filter(m=>m.role==='assistant'&&m.spoken===true&&m.id&&!seenMessages.has(m.id)):[];
+  seenMessages=new Set(state.messages.map(m=>m.id));
+  if(voiceEnabled&&fresh.length)void speak(fresh.at(-1));
+  petAnimator.update(state);
+}
+$('bind').onclick=()=>control('bind',{binding:{instance_id:state.observation.guard.instance_id,run_id:state.observation.guard.run_id,local_player_id:state.observation.guard.local_player_id}});
+$('resume').onclick=()=>{desktopEnabled=false;syncDesktop();return control('resume');};$('pause').onclick=()=>control('pause');
+$('ambient-enabled').onchange=()=>{if(!$('ambient-enabled').checked&&ambientVoice)stopVoice();return control('ambient-settings',{enabled:$('ambient-enabled').checked});};
+$('ambient-frequency').onchange=()=>{
+  const value=$('ambient-frequency').value;$('ambient-custom').hidden=value!=='custom';
+  if(value!=='custom'){const [minMinutes,maxMinutes]=value.split(',').map(Number);return control('ambient-settings',{minMinutes,maxMinutes});}
+};
+$('ambient-apply').onclick=()=>control('ambient-settings',{minMinutes:Number($('ambient-min').value),maxMinutes:Number($('ambient-max').value)});
+$('ambient-vision').onchange=()=>{
+  const on=$('ambient-vision').checked;
+  if(on&&!confirm('要让大肥鱼偶尔看看你的屏幕吗？\n\n· 最多每 5 分钟截一次当前窗口，只在内存里发给 DeepSeek 识图，不存到硬盘\n· 截图时她头边会亮起「👀 瞄了一眼屏幕」\n· 密码管理器、网银、隐身窗口一律不看\n· 随时可以点「一小时内别看」或关掉这个开关')){$('ambient-vision').checked=false;return;}
+  return control('ambient-settings',{visionEnabled:on});
+};
+$('new-trial').onclick=()=>control('new-trial');
+$('new-conversation').onclick=()=>control('new-conversation');
+$('conversation-list').onchange=()=>control('switch-conversation',{sessionId:$('conversation-list').value});
+$('mode').onclick=()=>{focused=!focused;document.body.classList.toggle('focus',focused);$('mode').textContent=focused?'游戏专注':'完整面板';$('mode').setAttribute('aria-pressed',String(focused));$('technical').open=!focused;render(state);};
+$('voice-label').textContent=voiceEnabled?'语音已开':'开启语音';$('voice').setAttribute('aria-pressed',String(voiceEnabled));
+$('voice').onclick=()=>{voiceEnabled=!voiceEnabled;localStorage.setItem('companion-voice',voiceEnabled?'on':'off');stopVoice();$('voice-label').textContent=voiceEnabled?'语音已开':'开启语音';$('voice').setAttribute('aria-pressed',String(voiceEnabled));};
+$('stop-voice').onclick=stopVoice;
+$('preview-voice').onclick=()=>{stopVoice();void speak({at:Date.now()},true);};
+for(const preset of ['gentle','happy','tsundere','serious']){
+  $('preview-'+preset).onclick=()=>{stopVoice();void speak({at:Date.now()},true,preset);};
+}
+$('volume').oninput=()=>{if(audio)audio.volume=Number($('volume').value);};
+window.addEventListener('pagehide',stopVoice);
+window.addEventListener('companion-game-exiting',stopVoice);
+$('chat-form').onsubmit=async e=>{e.preventDefault();const text=$('chat').value.trim();const button=e.submitter;if(text){button.disabled=true;try{if(await control('chat',{text})&&$('chat').value.trim()===text)$('chat').value='';}finally{button.disabled=false;}}};
+const missingExpressions=new Set();let expression='';
+function setExpression(name){
+  if(missingExpressions.has(name))name='';
+  if(name===expression)return;
+  expression=name;$('card-art').src=name?'/game-companion/art/expressions/'+name+'.png':portraitSrc;
+}
+$('card-art').onerror=()=>{if(expression){missingExpressions.add(expression);expression='';$('card-art').src=portraitSrc;}};
+const conversationTitle=()=>(state?.conversations??[]).find(item=>item.sessionId===state.sessionId)?.title??'';
+$('rename-conversation').onclick=()=>{
+  $('rename-form').hidden=!$('rename-form').hidden;
+  if(!$('rename-form').hidden){$('conversation-title').value=conversationTitle();$('conversation-title').focus();}
+};
+async function saveConversationTitle(){
+  if(await control('rename-conversation',{sessionId:state.sessionId,title:String($('conversation-title').value??'').trim()}))$('rename-form').hidden=true;
+}
+$('rename-save').onclick=()=>saveConversationTitle();
+$('conversation-title').onkeydown=event=>{
+  if(event.isComposing)return;
+  if(event.key==='Enter'){event.preventDefault();void saveConversationTitle();}
+  if(event.key==='Escape'){event.preventDefault();event.stopPropagation();$('rename-form').hidden=true;}
+};
+$('export-conversation').onclick=()=>{
+  const title=conversationTitle()||'和大肥鱼的聊天',time=at=>Number.isFinite(at)?'（'+new Date(at).toLocaleString('zh-CN')+'）':'';
+  const text=['# '+title,...state.messages.filter(m=>!m.detail).map(m=>'**'+(m.role==='user'?'我':'大肥鱼')+'**'+time(m.at)+'\n\n'+m.text)].join('\n\n')+'\n';
+  const url=URL.createObjectURL(new Blob([text],{type:'text/markdown;charset=utf-8'})),link=document.createElement('a');
+  link.href=url;link.download=title.replace(/[\\/:*?"<>|]/g,'_')+'.md';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
+$('delete-conversation').onclick=async()=>{
+  if(typeof confirm==='function'&&!confirm('删掉「'+(conversationTitle()||'这段对话')+'」？删了就找不回来了。'))return;
+  await control('delete-conversation',{sessionId:state.sessionId});
+};
+// The host pushes each changed snapshot; plain polling stays as the fallback.
+async function poll(){const sessionId=state?.sessionId;try{const r=await fetch('/game-companion/state');const value=await r.json();if(!conversationChanging&&sessionId===state?.sessionId)render(value);}catch{$('status').textContent='搭子服务未连接';}finally{setTimeout(poll,1000)}}
+function listen(){
+  if(typeof EventSource!=='function'){void poll();return;}
+  const source=new EventSource('/game-companion/events');
+  source.onmessage=event=>{try{const value=JSON.parse(event.data);if(!conversationChanging)render(value);}catch{}};
+  source.onerror=()=>{$('status').textContent='搭子服务未连接';if(source.readyState===2){source.close();setTimeout(listen,3000);}};
+}
+function refreshClock(){if(state)render(state);setTimeout(refreshClock,30000);}
+const initialState=(async()=>{
+  try{const r=await fetch('/game-companion/state');render(await r.json());}catch{$('status').textContent='搭子服务未连接';}
+  listen();setTimeout(refreshClock,30000);
+})();
+</script></html>

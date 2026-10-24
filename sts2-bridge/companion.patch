@@ -1,0 +1,1720 @@
+diff --git a/McpMod.MultiplayerState.cs b/McpMod.MultiplayerState.cs
+index cdbd318..280dcda 100644
+--- a/McpMod.MultiplayerState.cs
++++ b/McpMod.MultiplayerState.cs
+@@ -24,7 +24,7 @@ namespace STS2_MCP;
+ 
+ public static partial class McpMod
+ {
+-    private static Dictionary<string, object?> BuildMultiplayerGameState()
++    private static Dictionary<string, object?> BuildMultiplayerGameState(bool allowUiActions = true)
+     {
+         var result = new Dictionary<string, object?>();
+         var tree = Engine.GetMainLoop() as SceneTree;
+@@ -171,7 +171,7 @@ public static partial class McpMod
+             else if (eventRoom.CanonicalEvent is FakeMerchant)
+             {
+                 result["state_type"] = "fake_merchant";
+-                result["fake_merchant"] = BuildFakeMerchantState(eventRoom, runState);
++                result["fake_merchant"] = BuildFakeMerchantState(eventRoom, runState, allowUiActions);
+             }
+             else
+             {
+@@ -194,13 +194,17 @@ public static partial class McpMod
+             else
+             {
+                 var merchUI = NMerchantRoom.Instance;
+-                if (merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
++                if (allowUiActions && merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
+                 {
+                     merchUI.OpenInventory();
+                 }
+ 
+                 result["state_type"] = "shop";
+-                result["shop"] = BuildShopState(merchantRoom, runState);
++                var shopState = BuildShopState(merchantRoom, runState);
++                // The model enters the shop before the scene finishes loading. Null
++                // means unavailable; false means a ready inventory that can be opened.
++                if (!allowUiActions) shopState["inventory_open"] = CompanionMerchantRoom(merchantRoom)?.Inventory.IsOpen;
++                result["shop"] = shopState;
+             }
+         }
+         else if (currentRoom is RestSiteRoom restSiteRoom)
+@@ -226,7 +230,7 @@ public static partial class McpMod
+             else
+             {
+                 result["state_type"] = "treasure";
+-                result["treasure"] = BuildMultiplayerTreasureState(treasureRoom, runState);
++                result["treasure"] = BuildMultiplayerTreasureState(treasureRoom, runState, allowUiActions);
+             }
+         }
+         else
+@@ -365,13 +369,13 @@ public static partial class McpMod
+         return state;
+     }
+ 
+-    private static Dictionary<string, object?> BuildMultiplayerTreasureState(TreasureRoom treasureRoom, RunState runState)
++    private static Dictionary<string, object?> BuildMultiplayerTreasureState(TreasureRoom treasureRoom, RunState runState, bool allowUiActions = true)
+     {
+         // Auto-open chest same as singleplayer. BeginRelicPicking() runs during
+         // TreasureRoom.Enter(), so relics are already generated. The chest click
+         // just triggers the UI animation + gold via OneOffSynchronizer - same path
+         // as a human click or the game's own AutoSlay handler.
+-        var state = BuildTreasureState(treasureRoom, runState);
++        var state = BuildTreasureState(treasureRoom, runState, allowUiActions);
+ 
+         // Add per-player bid data
+         try
+@@ -391,8 +395,8 @@ public static partial class McpMod
+                     {
+                         ["player"] = SafeGetText(() => player.Character.Title),
+                         ["is_local"] = LocalContext.IsMe(player),
+-                        ["voted"] = vote != null,
+-                        ["vote_relic_index"] = vote
++                        ["voted"] = allowUiActions ? vote != null : vote?.voteReceived == true,
++                        ["vote_relic_index"] = allowUiActions ? (object?)vote : vote?.index
+                     });
+                 }
+                 state["bids"] = bids;
+@@ -429,6 +433,16 @@ public static partial class McpMod
+             {
+                 entry["block"] = player.Creature.Block;
+                 entry["is_ready_to_end_turn"] = CombatManager.Instance.IsPlayerReadyToEndTurn(player);
++                entry["status"] = BuildPowersState(player.Creature);
++                entry["relics"] = player.Relics.Select(relic =>
++                {
++                    var description = SafeGetText(() => relic.DynamicDescription) ?? "";
++                    return new Dictionary<string, object?>
++                    {
++                        ["id"] = relic.Id.Entry, ["name"] = SafeGetText(() => relic.Title),
++                        ["description"] = description[..Math.Min(description.Length, 400)]
++                    };
++                }).ToArray();
+ 
+                 // Include pets for teammates (local player's pets are under "player")
+                 if (!LocalContext.IsMe(player))
+diff --git a/McpMod.StateBuilder.cs b/McpMod.StateBuilder.cs
+index 76eee84..de8c291 100644
+--- a/McpMod.StateBuilder.cs
++++ b/McpMod.StateBuilder.cs
+@@ -1263,6 +1263,16 @@ public static partial class McpMod
+         state["description"] = SafeGetCardDescription(card); // hand cards use default pile
+         state["target_type"] = card.TargetType.ToString();
+         state["can_play"] = unplayableReason == UnplayableReason.None;
++        // Base variables are public rules data, not final damage predictions.
++        // Only the two audited primitive Ironclad cards carry a search rule.
++        state["dynamic_vars"] = card.DynamicVars.ToDictionary(pair => pair.Key, pair => pair.Value.BaseValue);
++        state["adviser_rule"] = card.Enchantment == null && card.GetEnchantedReplayCount() == 0
++            ? card switch
++            {
++                MegaCrit.Sts2.Core.Models.Cards.StrikeIronclad => "single_attack",
++                MegaCrit.Sts2.Core.Models.Cards.DefendIronclad => "self_block",
++                _ => null
++            } : null;
+         state["unplayable_reason"] = unplayableReason != UnplayableReason.None ? unplayableReason.ToString() : null;
+         return state;
+     }
+@@ -1433,7 +1443,7 @@ public static partial class McpMod
+         return state;
+     }
+ 
+-    private static Dictionary<string, object?> BuildFakeMerchantState(EventRoom eventRoom, RunState runState)
++    private static Dictionary<string, object?> BuildFakeMerchantState(EventRoom eventRoom, RunState runState, bool allowUiActions = true)
+     {
+         var state = new Dictionary<string, object?>();
+         // LocalMutableEvent holds the per-player mutable copy with populated inventory;
+@@ -1463,7 +1473,7 @@ public static partial class McpMod
+         }
+ 
+         // Auto-open the inventory if the merchant button is still available
+-        if (fakeMerchantNode != null)
++        if (allowUiActions && fakeMerchantNode != null)
+         {
+             var inventoryUI = FindFirst<NMerchantInventory>(fakeMerchantNode);
+             if (inventoryUI != null && !inventoryUI.IsOpen)
+@@ -1478,6 +1488,8 @@ public static partial class McpMod
+ 
+         // Build shop inventory from the FakeMerchant model
+         var shopState = BuildFakeMerchantShopItems(fakeMerchant.Inventory);
++        if (!allowUiActions)
++            state["inventory_open"] = fakeMerchantNode != null && FindFirst<NMerchantInventory>(fakeMerchantNode)?.IsOpen == true;
+ 
+         // Proceed button
+         if (fakeMerchantNode != null)
+@@ -2286,7 +2298,7 @@ public static partial class McpMod
+         return state;
+     }
+ 
+-    private static Dictionary<string, object?> BuildTreasureState(TreasureRoom treasureRoom, RunState runState)
++    private static Dictionary<string, object?> BuildTreasureState(TreasureRoom treasureRoom, RunState runState, bool allowUiActions = true)
+     {
+         var state = new Dictionary<string, object?>();
+ 
+@@ -2301,7 +2313,8 @@ public static partial class McpMod
+ 
+         // Auto-open chest if not yet opened
+         var chestButton = treasureUI.GetNodeOrNull<NClickableControl>("Chest");
+-        if (chestButton is { IsEnabled: true })
++        if (!allowUiActions) state["can_open_chest"] = chestButton is { IsEnabled: true } && chestButton.IsVisibleInTree();
++        if (allowUiActions && chestButton is { IsEnabled: true })
+         {
+             chestButton.ForceClick();
+             state["message"] = "Opening chest...";
+@@ -2318,13 +2331,14 @@ public static partial class McpMod
+ 
+             var relics = new List<Dictionary<string, object?>>();
+             int index = 0;
+-            foreach (var holder in holders)
++            for (int holderIndex = 0; holderIndex < holders.Count; holderIndex++)
+             {
++                var holder = holders[holderIndex];
+                 var relic = holder.Relic?.Model;
+                 if (relic == null) continue;
+                 relics.Add(new Dictionary<string, object?>
+                 {
+-                    ["index"] = index,
++                    ["index"] = allowUiActions ? index : holderIndex,
+                     ["id"] = relic.Id.Entry,
+                     ["name"] = SafeGetText(() => relic.Title),
+                     ["description"] = SafeGetText(() => relic.DynamicDescription),
+diff --git a/McpMod.cs b/McpMod.cs
+index 3b5ed64..eff6ccf 100644
+--- a/McpMod.cs
++++ b/McpMod.cs
+@@ -127,7 +127,7 @@ public static partial class McpMod
+     private static void ProcessMainThreadQueue()
+     {
+         int processed = 0;
+-        while (_mainThreadQueue.TryDequeue(out var action) && processed < 10)
++        while (processed < 10 && _mainThreadQueue.TryDequeue(out var action))
+         {
+             try { action(); }
+             catch (Exception ex) { GD.PrintErr($"[STS2 MCP] Main thread action error: {ex}"); }
+@@ -178,6 +178,11 @@ public static partial class McpMod
+         {
+             var request = context.Request;
+             var response = context.Response;
++            if (request.Url?.AbsolutePath == "/api/v1/companion")
++            {
++                HandleCompanionRequest(request, response);
++                return;
++            }
+             response.Headers.Add("Access-Control-Allow-Origin", "*");
+             response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+             response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
+diff --git a/LocalHttpListener.cs b/LocalHttpListener.cs
+new file mode 100644
+index 0000000..403950e
+--- /dev/null
++++ b/LocalHttpListener.cs
+@@ -0,0 +1,158 @@
++global using HttpListener = STS2_MCP.LocalHttpListener;
++global using HttpListenerContext = STS2_MCP.LocalHttpContext;
++global using HttpListenerRequest = STS2_MCP.LocalHttpRequest;
++global using HttpListenerResponse = STS2_MCP.LocalHttpResponse;
++
++using System;
++using System.Collections.Generic;
++using System.Collections.Specialized;
++using System.IO;
++using System.Linq;
++using System.Net;
++using System.Net.Sockets;
++using System.Text;
++using System.Web;
++
++namespace STS2_MCP;
++
++// The upstream HTTP.sys listener needs administrator-created URL reservations on
++// Windows. This deliberately small HTTP/1.1, connection-close transport supports
++// the local JSON bridge without changing machine-wide HTTP configuration.
++internal sealed class LocalHttpListener
++{
++    private TcpListener? _server;
++    public List<string> Prefixes { get; } = new();
++    private volatile bool _isListening;
++    public bool IsListening => _isListening;
++
++    public void Start()
++    {
++        var uris = Prefixes.Select(prefix => new Uri(prefix)).ToArray();
++        if (uris.Length == 0 || uris.Any(uri => uri.Scheme != "http" || !uri.IsLoopback || uri.Port != uris[0].Port))
++            throw new InvalidOperationException("Only one loopback HTTP port is supported");
++        _server = new TcpListener(IPAddress.Loopback, uris[0].Port);
++        _server.Start(16);
++        _isListening = true;
++    }
++
++    public void Stop() { _isListening = false; _server?.Stop(); }
++    public void Close() => Stop();
++
++    public LocalHttpContext GetContext()
++    {
++        while (IsListening)
++        {
++            TcpClient client;
++            try { client = _server!.AcceptTcpClient(); }
++            catch (SocketException) when (!IsListening) { throw new HttpListenerException(); }
++            catch (InvalidOperationException) when (!IsListening) { throw new HttpListenerException(); }
++            client.ReceiveTimeout = 5000;
++            client.SendTimeout = 5000;
++            try
++            {
++                var request = LocalHttpRequest.Read(client.GetStream(), ((IPEndPoint)client.Client.LocalEndPoint!).Port);
++                return new LocalHttpContext(request, new LocalHttpResponse(client));
++            }
++            catch (Exception error) when (error is IOException or FormatException or ArgumentException)
++            {
++                using (client)
++                {
++                    try
++                    {
++                        var response = Encoding.ASCII.GetBytes("HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
++                        client.GetStream().Write(response);
++                    }
++                    catch (IOException) { }
++                }
++            }
++        }
++        throw new HttpListenerException();
++    }
++}
++
++internal sealed record LocalHttpContext(LocalHttpRequest Request, LocalHttpResponse Response);
++
++internal sealed class LocalHttpRequest
++{
++    public string HttpMethod { get; private init; } = "";
++    public Uri Url { get; private init; } = null!;
++    public NameValueCollection Headers { get; private init; } = new(StringComparer.OrdinalIgnoreCase);
++    public NameValueCollection QueryString => HttpUtility.ParseQueryString(Url.Query);
++    public Encoding ContentEncoding => Encoding.UTF8;
++    public string? ContentType => Headers["Content-Type"];
++    public long ContentLength64 => InputStream.Length;
++    public Stream InputStream { get; private init; } = Stream.Null;
++
++    internal static LocalHttpRequest Read(Stream stream, int port)
++    {
++        // Read no further than the header terminator so no request body bytes are
++        // lost to a text reader's buffering. Bound both headers and request body.
++        var buffer = new List<byte>();
++        while (true)
++        {
++            int value = stream.ReadByte();
++            if (value < 0 || buffer.Count >= 16384) throw new FormatException("Incomplete or excessive HTTP headers");
++            buffer.Add((byte)value);
++            int size = buffer.Count;
++            if (size >= 4 && buffer[size - 4] == 13 && buffer[size - 3] == 10 && buffer[size - 2] == 13 && buffer[size - 1] == 10) break;
++        }
++        var lines = Encoding.ASCII.GetString(buffer.ToArray()).Split("\r\n");
++        var first = lines[0].Split(' ');
++        if (first.Length != 3 || first[2] != "HTTP/1.1" || !first[1].StartsWith('/') || first[1].StartsWith("//"))
++            throw new FormatException("Expected an HTTP/1.1 origin-form request");
++        var headers = new NameValueCollection(StringComparer.OrdinalIgnoreCase);
++        foreach (var line in lines.Skip(1).Where(line => line.Length > 0))
++        {
++            int colon = line.IndexOf(':');
++            if (colon <= 0 || char.IsWhiteSpace(line[0])) throw new FormatException("Malformed header");
++            string name = line[..colon];
++            if (headers[name] != null) throw new FormatException("Duplicate header");
++            headers[name] = line[(colon + 1)..].Trim();
++        }
++        string? host = headers["Host"];
++        if (host != $"localhost:{port}" && host != $"127.0.0.1:{port}") throw new FormatException("Unexpected Host");
++        if (headers["Transfer-Encoding"] != null || headers["Expect"] != null) throw new FormatException("Unsupported body encoding");
++        int length = 0;
++        if (headers["Content-Length"] is string rawLength && (!int.TryParse(rawLength, out length) || length < 0 || length > 32768))
++            throw new FormatException("Body exceeds 32 KiB");
++        var body = new byte[length];
++        stream.ReadExactly(body);
++        return new LocalHttpRequest
++        {
++            HttpMethod = first[0],
++            Url = new Uri($"http://{host}{first[1]}"),
++            Headers = headers,
++            InputStream = new MemoryStream(body, writable: false)
++        };
++    }
++}
++
++internal sealed class LocalHttpResponse
++{
++    private readonly TcpClient _client;
++    private bool _closed;
++    public WebHeaderCollection Headers { get; } = new();
++    public int StatusCode { get; set; } = 200;
++    public string ContentType { get; set; } = "application/json";
++    public long ContentLength64 { get; set; }
++    public MemoryStream OutputStream { get; } = new();
++    internal LocalHttpResponse(TcpClient client) => _client = client;
++
++    public void Close()
++    {
++        if (_closed) return;
++        _closed = true;
++        using (_client)
++        using (OutputStream)
++        {
++            var stream = _client.GetStream();
++            var header = new StringBuilder($"HTTP/1.1 {StatusCode} {((HttpStatusCode)StatusCode)}\r\nConnection: close\r\nContent-Type: {ContentType}\r\nContent-Length: {OutputStream.Length}\r\n");
++            foreach (string name in Headers.AllKeys)
++                header.Append(name).Append(": ").Append(Headers[name]).Append("\r\n");
++            header.Append("\r\n");
++            stream.Write(Encoding.UTF8.GetBytes(header.ToString()));
++            OutputStream.Position = 0;
++            OutputStream.CopyTo(stream);
++        }
++    }
++}
+diff --git a/McpMod.CompanionCardEvidence.cs b/McpMod.CompanionCardEvidence.cs
+new file mode 100644
+index 0000000..d351aac
+--- /dev/null
++++ b/McpMod.CompanionCardEvidence.cs
+@@ -0,0 +1,119 @@
++using System;
++using System.Runtime.CompilerServices;
++using System.Threading.Tasks;
++using HarmonyLib;
++using MegaCrit.Sts2.Core.Entities.Multiplayer;
++using MegaCrit.Sts2.Core.GameActions;
++using MegaCrit.Sts2.Core.Models;
++using MegaCrit.Sts2.Core.GameActions.Multiplayer;
++using MegaCrit.Sts2.Core.Multiplayer.Game;
++using MegaCrit.Sts2.Core.Multiplayer.Messages.Game;
++using MegaCrit.Sts2.Core.Multiplayer.Serialization;
++using MegaCrit.Sts2.Core.Runs;
++
++namespace STS2_MCP;
++
++public static partial class McpMod
++{
++    private static CompanionCardCancellationEvidence? _companionDispatchingCard;
++    private static CompanionCardCancellationEvidence? _companionCard;
++    private static readonly ConditionalWeakTable<ActionQueueSynchronizer, CompanionActionOrder> _companionActionOrders = new();
++
++    // Capture the exact action made by this guard dispatch, not a later action
++    // with the same card/target. Hosts execute this object. Clients correlate it
++    // to the reconstructed object using every request's reliable FIFO echo below.
++    [HarmonyPatch(typeof(ActionQueueSynchronizer), nameof(ActionQueueSynchronizer.RequestEnqueue))]
++    private static class CompanionCardRequestPatch
++    {
++        private static void Prefix(GameAction action)
++        {
++            var evidence = _companionDispatchingCard;
++            if (evidence != null && evidence.Action == null && action is PlayCardAction play
++                && ReferenceEquals(play.NetCombatCard.ToCardModel(), evidence.Card))
++                evidence.Action = play;
++        }
++    }
++
++    // Both request and echo use the same reliable ordered channel. The host
++    // synchronously echoes each request once. Track ALL local ordinary actions,
++    // including manual actions, rather than searching for a matching card.
++    [HarmonyPatch(typeof(ActionQueueSynchronizer), nameof(ActionQueueSynchronizer.RequestEnqueue))]
++    private static class CompanionClientRequestOrderPatch
++    {
++        private static void Prefix(ActionQueueSynchronizer __instance, GameAction action,
++            INetGameService ____netService, RunLocationTargetedMessageBuffer ____messageBuffer)
++        {
++            if (____netService.Type != NetGameType.Client) return;
++            var order = _companionActionOrders.GetValue(__instance, _ => new CompanionActionOrder());
++            if (!____netService.IsConnected) { order.Invalidate(); return; }
++            // This branch only stores a deferred action. RequestEnqueue is called
++            // again when it is actually sent at the start of the player turn.
++            if (action.ActionType == GameActionType.CombatPlayPhaseOnly
++                && __instance.CombatState == ActionSynchronizerCombatState.NotPlayPhase) return;
++            try { order.Sent(action, CompanionActionPayload(action, ____messageBuffer.CurrentLocation)); }
++            catch { order.Invalidate(); }
++        }
++
++        private static Exception? Finalizer(ActionQueueSynchronizer __instance, Exception? __exception)
++        {
++            if (__exception != null && _companionActionOrders.TryGetValue(__instance, out var order)) order.Invalidate();
++            return __exception;
++        }
++    }
++
++    [HarmonyPatch(typeof(ActionQueueSynchronizer), "EnqueueAction")]
++    private static class CompanionClientEchoPatch
++    {
++        private static void Prefix(ActionQueueSynchronizer __instance, GameAction action, ulong actionOwnerId,
++            INetGameService ____netService, RunLocationTargetedMessageBuffer ____messageBuffer)
++        {
++            if (____netService.Type != NetGameType.Client || actionOwnerId != ____netService.NetId) return;
++            var order = _companionActionOrders.GetValue(__instance, _ => new CompanionActionOrder());
++            try
++            {
++                object? source = order.Confirm(CompanionActionPayload(action, ____messageBuffer.CurrentLocation));
++                if (source != null && ReferenceEquals(_companionCard?.Action, source)) _companionCard.Action = action;
++            }
++            catch { order.Invalidate(); }
++        }
++    }
++
++    private static string CompanionActionPayload(GameAction action, RunLocation location)
++    {
++        var writer = new PacketWriter();
++        new RequestEnqueueActionMessage { action = action.ToNetAction(), location = location }.Serialize(writer);
++        return writer.BitPosition + ":" + Convert.ToBase64String(writer.Buffer, 0, (writer.BitPosition + 7) / 8);
++    }
++
++    [HarmonyPatch(typeof(PlayCardAction), "ExecuteAction")]
++    private static class CompanionCardExecutionPatch
++    {
++        private static void Postfix(PlayCardAction __instance, Task __result)
++        {
++            if (ReferenceEquals(_companionCard?.Action, __instance))
++                _companionCard.ExecutionTask = __result;
++        }
++    }
++
++    [HarmonyPatch(typeof(PlayCardAction), "CancelAction")]
++    private static class CompanionCardCancellationPatch
++    {
++        private static void Postfix(PlayCardAction __instance)
++        {
++            if (ReferenceEquals(_companionCard?.Action, __instance) && !_companionCard.ResourcesStarted)
++                _companionCard.CancelledBeforeResources = true;
++        }
++    }
++
++    // This boundary precedes both resource mutation and OnPlayWrapper in the
++    // installed PlayCardAction. Even a fault here makes cancellation uncertain.
++    [HarmonyPatch(typeof(CardModel), nameof(CardModel.SpendResources))]
++    private static class CompanionCardResourcesPatch
++    {
++        private static void Prefix(CardModel __instance)
++        {
++            if (ReferenceEquals(_companionCard?.Card, __instance))
++                _companionCard.ResourcesStarted = true;
++        }
++    }
++}
+diff --git a/McpMod.CompanionFlows.cs b/McpMod.CompanionFlows.cs
+new file mode 100644
+index 0000000..68b53cf
+--- /dev/null
++++ b/McpMod.CompanionFlows.cs
+@@ -0,0 +1,527 @@
++using System;
++using System.Collections.Generic;
++using System.Linq;
++using System.Text.Json;
++using System.Threading.Tasks;
++using Godot;
++using HarmonyLib;
++using MegaCrit.Sts2.Core.Context;
++using MegaCrit.Sts2.Core.Entities.Merchant;
++using MegaCrit.Sts2.Core.Entities.Players;
++using MegaCrit.Sts2.Core.Events;
++using MegaCrit.Sts2.Core.Models.Events;
++using MegaCrit.Sts2.Core.Models;
++using MegaCrit.Sts2.Core.Map;
++using MegaCrit.Sts2.Core.Multiplayer.Game;
++using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
++using MegaCrit.Sts2.Core.Nodes.CommonUi;
++using MegaCrit.Sts2.Core.Nodes.Events;
++using MegaCrit.Sts2.Core.Nodes.Events.Custom;
++using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
++using MegaCrit.Sts2.Core.Nodes.RestSite;
++using MegaCrit.Sts2.Core.Nodes.Rewards;
++using MegaCrit.Sts2.Core.Nodes.Rooms;
++using MegaCrit.Sts2.Core.Nodes.Screens;
++using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
++using MegaCrit.Sts2.Core.Nodes.Screens.Map;
++using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
++using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
++using MegaCrit.Sts2.Core.Nodes.Screens.TreasureRoomRelic;
++using MegaCrit.Sts2.Core.Rewards;
++using MegaCrit.Sts2.Core.Rooms;
++using MegaCrit.Sts2.Core.Runs;
++
++namespace STS2_MCP;
++
++public static partial class McpMod
++{
++    private sealed class CompanionAsyncEvidence(object target)
++    {
++        internal readonly object Target = target;
++        internal Task? Task;
++    }
++
++    private static CompanionAsyncEvidence? _companionAsync;
++
++    private sealed class CompanionMapEvidence(Player player, MapLocation source, MapCoord destination, int generation)
++    {
++        internal readonly Player Player = player;
++        internal readonly MapLocation Source = source;
++        internal readonly MapCoord Destination = destination;
++        internal readonly int Generation = generation;
++        internal bool VoteConfirmed;
++    }
++
++    private static CompanionMapEvidence? _companionMap;
++
++    [HarmonyPatch(typeof(MapSelectionSynchronizer), nameof(MapSelectionSynchronizer.PlayerVotedForMapCoord))]
++    private static class CompanionMapVotePatch
++    {
++        private static void Prefix(MapSelectionSynchronizer __instance, Player player, MapLocation source,
++            MapVote? destination, MapLocation ____acceptingVotesFromSource, out CompanionMapEvidence? __state)
++        {
++            var pending = _companionMap;
++            __state = pending != null && ReferenceEquals(pending.Player, player)
++                && pending.Source == source && source == ____acceptingVotesFromSource
++                && destination?.coord == pending.Destination && destination?.mapGenerationCount == pending.Generation
++                && pending.Generation == __instance.MapGenerationCount ? pending : null;
++        }
++
++        private static void Postfix(CompanionMapEvidence? __state)
++        {
++            if (__state != null) __state.VoteConfirmed = true;
++        }
++    }
++
++    private static Func<bool> TrackCompanionMapVote(Player player, RunState run, MapCoord coordinate)
++    {
++        var sync = RunManager.Instance.MapSelectionSynchronizer;
++        var evidence = new CompanionMapEvidence(player, run.MapLocation, coordinate, sync.MapGenerationCount);
++        _companionMap = evidence;
++        return () => evidence.VoteConfirmed || run.MapLocation == evidence.Source
++            && sync.MapGenerationCount == evidence.Generation
++            && sync.GetVote(player)?.mapGenerationCount == evidence.Generation
++            && sync.GetVote(player)?.coord == coordinate;
++    }
++
++    [HarmonyPatch(typeof(EventOption), nameof(EventOption.Chosen))]
++    private static class CompanionEventTaskPatch
++    {
++        private static void Postfix(EventOption __instance, Task __result)
++        {
++            if (ReferenceEquals(_companionAsync?.Target, __instance)) _companionAsync.Task = __result;
++        }
++    }
++
++    [HarmonyPatch(typeof(RestSiteSynchronizer), nameof(RestSiteSynchronizer.ChooseLocalOption))]
++    private static class CompanionRestTaskPatch
++    {
++        private static void Prefix(int index, out CompanionAsyncEvidence? __state)
++        {
++            var pending = _companionAsync;
++            var room = NRestSiteRoom.Instance;
++            __state = pending?.Target is NRestSiteButton button && room != null
++                && index >= 0 && index < room.Options.Count && ReferenceEquals(room.Options[index], button.Option)
++                ? pending : null;
++        }
++
++        private static void Postfix(CompanionAsyncEvidence? __state, Task<bool> __result)
++        {
++            if (__state != null) __state.Task = __result;
++        }
++    }
++
++    private sealed class CompanionTreasureEvidence(Player player, object relics, int index)
++    {
++        internal readonly Player Player = player;
++        internal readonly object Relics = relics;
++        internal readonly int Index = index;
++        internal bool VoteConfirmed;
++    }
++
++    private static CompanionTreasureEvidence? _companionTreasure;
++
++    [HarmonyPatch(typeof(TreasureRoomRelicSynchronizer), nameof(TreasureRoomRelicSynchronizer.OnPicked))]
++    private static class CompanionTreasureVotePatch
++    {
++        private static void Prefix(TreasureRoomRelicSynchronizer __instance, Player player, int? index,
++            out CompanionTreasureEvidence? __state)
++        {
++            var pending = _companionTreasure;
++            __state = pending != null && ReferenceEquals(pending.Player, player)
++                && ReferenceEquals(pending.Relics, __instance.CurrentRelics) && pending.Index == index ? pending : null;
++        }
++
++        private static void Postfix(CompanionTreasureEvidence? __state)
++        {
++            if (__state != null) __state.VoteConfirmed = true;
++        }
++    }
++
++    private static CompanionDispatch PrepareCompanionFlowAction(string action, Dictionary<string, JsonElement> data,
++        RunState run, Player player)
++    {
++        var overlay = NOverlayStack.Instance?.Peek();
++        Func<bool> observed;
++        Func<Dictionary<string, object?>> execute = () => ExecuteMultiplayerAction(action, data);
++
++        switch (action)
++        {
++            case "advance_dialogue":
++            {
++                if (overlay != null || IsMapScreenOpenOrVisible() || run.CurrentRoom is not EventRoom
++                    || NEventRoom.Instance is not { } room)
++                    throw new ArgumentException("Local ancient dialogue is not active");
++                var layout = FindFirst<NAncientEventLayout>(room) ?? throw new ArgumentException("No ancient dialogue layout");
++                var hitbox = layout.GetNodeOrNull<NClickableControl>("%DialogueHitbox");
++                RequireUsable(hitbox);
++                int line = layout.Get("_currentDialogueLine").AsInt32();
++                observed = () => layout.Get("_currentDialogueLine").AsInt32() != line || !hitbox!.IsVisibleInTree();
++                break;
++            }
++            case "claim_reward":
++            {
++                if (overlay is not NRewardsScreen screen) throw new ArgumentException("Local rewards screen is not open");
++                var buttons = FindAll<NRewardButton>(screen).Where(b => b.IsEnabled && b.Reward != null).ToList();
++                var button = At(buttons, data, "index");
++                RequireUsable(button);
++                var reward = button.Reward!;
++                if (!ReferenceEquals(reward.Player, player) || reward.SuccessfullySelected)
++                    throw new ArgumentException("Reward does not belong to the local player or was already selected");
++                // Opening a decision screen is the expected effect of claiming a
++                // card/removal reward; that later decision gets its own receipt.
++                observed = () => reward.SuccessfullySelected
++                    || reward is CardReward && NOverlayStack.Instance?.Peek() is NCardRewardSelectionScreen current
++                        && ReferenceEquals(AccessTools.Field(typeof(CardReward), "_currentlyShownScreen")?.GetValue(reward), current)
++                    || reward is CardRemovalReward && NewCompanionSelection(overlay);
++                break;
++            }
++            case "select_card_reward":
++            {
++                if (overlay is not NCardRewardSelectionScreen screen) throw new ArgumentException("Card reward is not open");
++                var holder = At(FindAllSortedByPosition<NCardHolder>(screen), data, "card_index");
++                var card = holder.CardModel ?? throw new ArgumentException("Card is unavailable");
++                if (!ReferenceEquals(card.Owner, player) || !CompanionCardClickable(holder))
++                    throw new ArgumentException("Card is not a visible local reward");
++                observed = () => player.Deck.Cards.Contains(card);
++                break;
++            }
++            case "skip_card_reward":
++            {
++                if (overlay is not NCardRewardSelectionScreen screen) throw new ArgumentException("Card reward is not open");
++                var skip = FindAll<NCardRewardAlternativeButton>(screen).FirstOrDefault();
++                RequireUsable(skip);
++                observed = () => !ReferenceEquals(NOverlayStack.Instance?.Peek(), screen);
++                break;
++            }
++            case "proceed":
++            {
++                if (IsMapScreenOpenOrVisible()) throw new ArgumentException("Local map is already open");
++                NProceedButton? button = overlay is NRewardsScreen rewards ? FindFirst<NProceedButton>(rewards) : null;
++                if (overlay != null && button == null) throw new ArgumentException("Resolve the local selection before proceeding");
++                if (button == null && run.CurrentRoom is RestSiteRoom restModel) button = CompanionRestRoom(restModel)?.ProceedButton;
++                if (button == null && run.CurrentRoom is MerchantRoom)
++                {
++                    if (NMerchantRoom.Instance?.Inventory?.IsOpen == true)
++                        throw new ArgumentException("Use close_shop before proceed");
++                    button = NMerchantRoom.Instance?.ProceedButton;
++                }
++                if (button == null && run.CurrentRoom is TreasureRoom) button = CompanionTreasureRoom()?.ProceedButton;
++                if (button == null && run.CurrentRoom is EventRoom { CanonicalEvent: FakeMerchant })
++                {
++                    var merchant = CompanionFakeMerchant();
++                    if (merchant != null && FindFirst<NMerchantInventory>(merchant)?.IsOpen == true)
++                        throw new ArgumentException("Use close_shop before proceed");
++                    if (merchant != null) button = FindFirst<NProceedButton>(merchant);
++                }
++                RequireUsable(button);
++                execute = () => { button!.ForceClick(); return CompanionSubmitted(); };
++                observed = () => IsMapScreenOpenOrVisible();
++                break;
++            }
++            case "choose_event_option":
++            {
++                if (overlay != null || IsMapScreenOpenOrVisible() || run.CurrentRoom is not EventRoom)
++                    throw new ArgumentException("Local event options are not active");
++                var room = NEventRoom.Instance ?? throw new ArgumentException("Event UI is unavailable");
++                var button = At(FindAll<NEventOptionButton>(room), data, "index");
++                RequireUsable(button);
++                if (button.Option.IsLocked || button.Option.WasChosen || !ReferenceEquals(button.Event.Owner, player))
++                    throw new ArgumentException("Event option is locked, chosen, or belongs to another player");
++                var evidence = new CompanionAsyncEvidence(button.Option);
++                _companionAsync = evidence;
++                // Finished events create a UI-only proceed option outside CurrentOptions.
++                // It opens the local map directly, including in shared events.
++                if (button.Option.IsProceed)
++                {
++                    observed = () => evidence.Task?.IsCompletedSuccessfully == true && IsMapScreenOpenOrVisible();
++                    break;
++                }
++                var sync = RunManager.Instance.EventSynchronizer;
++                bool shared = sync.IsShared;
++                int index = button.Event.CurrentOptions.ToList().FindIndex(o => ReferenceEquals(o, button.Option));
++                if (index < 0) throw new ArgumentException("Event option is not in the local event model");
++                if (shared && sync.GetPlayerVote(player) == (uint)index)
++                    throw new ArgumentException("Local player already voted for this event option");
++                bool voted = false;
++                void VoteChanged(Player voter)
++                {
++                    if (ReferenceEquals(voter, player) && sync.GetPlayerVote(player) == (uint)index) voted = true;
++                }
++                execute = () =>
++                {
++                    sync.PlayerVoteChanged += VoteChanged;
++                    try { return ExecuteMultiplayerAction(action, data); }
++                    finally { sync.PlayerVoteChanged -= VoteChanged; }
++                };
++                observed = () => shared ? voted || sync.GetPlayerVote(player) == (uint)index
++                    : evidence.Task?.IsCompletedSuccessfully == true
++                        || evidence.Task is { IsFaulted: false, IsCanceled: false } && NewCompanionSelection(overlay);
++                break;
++            }
++            case "choose_rest_option":
++            {
++                if (overlay != null || IsMapScreenOpenOrVisible() || run.CurrentRoom is not RestSiteRoom model)
++                    throw new ArgumentException("Local rest options are not active");
++                var room = CompanionRestRoom(model) ?? throw new ArgumentException("Local rest UI is not ready");
++                var button = At(FindAll<NRestSiteButton>(room), data, "index");
++                RequireUsable(button);
++                if (!ReferenceEquals(button.Option, At(model.Options, data, "index")))
++                    throw new ArgumentException("Rest option does not match the current local model");
++                if (!button.Option.IsEnabled) throw new ArgumentException("Rest option is disabled");
++                var evidence = new CompanionAsyncEvidence(button);
++                _companionAsync = evidence;
++                observed = () => CompanionLedger.SuccessfulEffectTask(evidence.Task as Task<bool>) && room.ProceedButton.IsEnabled
++                    || evidence.Task is { IsFaulted: false, IsCanceled: false } && NewCompanionSelection(overlay);
++                break;
++            }
++            case "select_card":
++            {
++                if (overlay is NCardGridSelectionScreen grid)
++                {
++                    if (BuildCardSelectState(grid, run)["preview_showing"] is true)
++                        throw new ArgumentException("Confirm or cancel the current preview before choosing another card");
++                    var holder = At(FindAllSortedByPosition<NGridCardHolder>(grid), data, "index");
++                    if (!CompanionCardClickable(holder)) throw new ArgumentException("Selected card is not currently clickable");
++                    var selectedCard = holder.CardModel;
++                    bool wasSelected = CompanionSelectedCards(grid).Contains(selectedCard);
++                    var completion = grid.CardsSelected();
++                    string before = CompanionSelectionState(grid, run);
++                    observed = () => completion.IsCompletedSuccessfully
++                        || ReferenceEquals(NOverlayStack.Instance?.Peek(), grid)
++                            && (CompanionSelectedCards(grid).Contains(selectedCard) != wasSelected
++                                || CompanionSelectionState(grid, run) != before);
++                }
++                else if (overlay is NChooseACardSelectionScreen choose)
++                {
++                    var holder = At(FindAllSortedByPosition<NGridCardHolder>(choose), data, "index");
++                    if (!CompanionCardClickable(holder)) throw new ArgumentException("Selected card is not currently clickable");
++                    observed = () => !ReferenceEquals(NOverlayStack.Instance?.Peek(), choose);
++                }
++                else throw new ArgumentException("Local card selection is not open");
++                break;
++            }
++            case "confirm_selection":
++            case "cancel_selection":
++            {
++                if (overlay is NCardGridSelectionScreen grid)
++                {
++                    var state = BuildCardSelectState(grid, run);
++                    string key = action == "confirm_selection" ? "can_confirm" : "can_cancel";
++                    if (state[key] is not true) throw new ArgumentException("Selection does not advertise " + key);
++                    var completion = grid.CardsSelected();
++                    string before = CompanionSelectionState(grid, run);
++                    observed = () => completion.IsCompletedSuccessfully
++                        || action == "cancel_selection" && (!ReferenceEquals(NOverlayStack.Instance?.Peek(), grid)
++                            || CompanionSelectionState(grid, run) != before);
++                }
++                else if (action == "cancel_selection" && overlay is NChooseACardSelectionScreen choose)
++                {
++                    if (BuildChooseCardState(choose, run)["can_skip"] is not true) throw new ArgumentException("Card choice cannot be skipped");
++                    observed = () => !ReferenceEquals(NOverlayStack.Instance?.Peek(), choose);
++                }
++                else throw new ArgumentException("Local card selection is not open");
++                break;
++            }
++            case "open_shop":
++            case "close_shop":
++            {
++                if (overlay != null || IsMapScreenOpenOrVisible()) throw new ArgumentException("Shop is covered by another screen");
++                Node ui;
++                NMerchantInventory inventory;
++                Action open;
++                bool desired = action == "open_shop";
++                if (run.CurrentRoom is MerchantRoom model)
++                {
++                    var merchant = CompanionMerchantRoom(model) ?? throw new ArgumentException("Local shop UI is not ready");
++                    ui = merchant; inventory = merchant.Inventory; open = merchant.OpenInventory;
++                }
++                else if (run.CurrentRoom is EventRoom { CanonicalEvent: FakeMerchant } && CompanionFakeMerchant() is { } fake)
++                {
++                    ui = fake;
++                    inventory = FindFirst<NMerchantInventory>(fake) ?? throw new ArgumentException("Shop inventory is unavailable");
++                    if (desired) RequireUsable(fake.MerchantButton);
++                    open = fake.MerchantButton.ForceClick;
++                }
++                else throw new ArgumentException("No local shop is active");
++                if (inventory.IsOpen == desired) throw new ArgumentException("Shop is already in the requested state");
++                var back = desired ? null : FindFirst<NBackButton>(ui);
++                if (!desired) RequireUsable(back);
++                execute = () => { if (desired) open(); else back!.ForceClick(); return CompanionSubmitted(); };
++                observed = () => inventory.IsOpen == desired;
++                break;
++            }
++            case "shop_purchase":
++            {
++                if (overlay != null || IsMapScreenOpenOrVisible()) throw new ArgumentException("Shop is covered by another screen");
++                MerchantInventory? inventory = null;
++                if (run.CurrentRoom is MerchantRoom merchant && NMerchantRoom.Instance?.Inventory?.IsOpen == true)
++                    inventory = merchant.GetLocalInventory();
++                else if (run.CurrentRoom is EventRoom eventRoom && (eventRoom.LocalMutableEvent ?? eventRoom.CanonicalEvent) is FakeMerchant fake
++                    && CompanionFakeMerchant() is { } fakeUi && FindFirst<NMerchantInventory>(fakeUi)?.IsOpen == true)
++                    inventory = fake.Inventory;
++                if (inventory == null) throw new ArgumentException("Use open_shop before purchasing");
++                var entry = At(inventory.AllEntries.ToList(), data, "index");
++                if (!entry.IsStocked || !entry.EnoughGold) throw new ArgumentException("Item is sold out or unaffordable");
++                Task<bool>? purchase = null;
++                execute = () => { purchase = entry.OnTryPurchaseWrapper(inventory); return CompanionSubmitted(); };
++                observed = () => CompanionLedger.SuccessfulEffectTask(purchase)
++                    || purchase is { IsFaulted: false, IsCanceled: false } && NewCompanionSelection(overlay);
++                break;
++            }
++            case "open_treasure":
++            {
++                if (overlay != null || IsMapScreenOpenOrVisible() || run.CurrentRoom is not TreasureRoom)
++                    throw new ArgumentException("Local treasure room is not active");
++                var room = CompanionTreasureRoom() ?? throw new ArgumentException("Treasure UI is unavailable");
++                var chest = room.GetNodeOrNull<NClickableControl>("Chest");
++                RequireUsable(chest);
++                bool wasVisible = room.GetNodeOrNull<NTreasureRoomRelicCollection>("%RelicCollection")?.Visible == true;
++                bool couldProceed = room.ProceedButton.IsEnabled;
++                execute = () => { chest!.ForceClick(); return CompanionSubmitted(); };
++                observed = () => !wasVisible && room.GetNodeOrNull<NTreasureRoomRelicCollection>("%RelicCollection")?.Visible == true
++                    || !couldProceed && room.ProceedButton.IsEnabled;
++                break;
++            }
++            case "claim_treasure_relic":
++            {
++                if (overlay != null || IsMapScreenOpenOrVisible() || run.CurrentRoom is not TreasureRoom)
++                    throw new ArgumentException("Local treasure choice is not active");
++                var room = CompanionTreasureRoom() ?? throw new ArgumentException("Treasure UI is unavailable");
++                var collection = room.GetNodeOrNull<NTreasureRoomRelicCollection>("%RelicCollection");
++                if (collection?.Visible != true) throw new ArgumentException("Use open_treasure first");
++                var holder = At(FindAll<NTreasureRoomRelicHolder>(collection).Where(h => h.IsEnabled && h.Visible).ToList(), data, "index");
++                RequireUsable(holder);
++                var relic = holder.Relic?.Model ?? throw new ArgumentException("Relic is unavailable");
++                var relics = RunManager.Instance.TreasureRoomRelicSynchronizer.CurrentRelics
++                    ?? throw new ArgumentException("Relic voting is inactive");
++                int realIndex = relics.ToList().FindIndex(r => ReferenceEquals(r, relic));
++                if (realIndex < 0) throw new ArgumentException("Relic is not in the current shared offer");
++                var evidence = new CompanionTreasureEvidence(player, relics, realIndex);
++                _companionTreasure = evidence;
++                observed = () => evidence.VoteConfirmed;
++                break;
++            }
++            default: throw new ArgumentException("Action is not in the companion allowlist");
++        }
++        return new CompanionDispatch(execute, observed);
++    }
++
++    private static T At<T>(IReadOnlyList<T> items, Dictionary<string, JsonElement> data, string key)
++    {
++        int index = RequiredIndex(data, key);
++        if (index >= items.Count) throw new ArgumentException($"'{key}' is outside the current local choices");
++        return items[index];
++    }
++
++    private static void RequireUsable(NClickableControl? control)
++    {
++        if (control == null || !control.IsEnabled || !control.IsVisibleInTree())
++            throw new ArgumentException("Local control is not visible and enabled");
++    }
++
++    private static bool NewCompanionSelection(object? previous)
++    {
++        var current = NOverlayStack.Instance?.Peek();
++        return !ReferenceEquals(current, previous)
++            && current is NCardRewardSelectionScreen or NCardGridSelectionScreen or NChooseACardSelectionScreen;
++    }
++
++    private static string CompanionSelectionState(NCardGridSelectionScreen screen, RunState run)
++    {
++        var state = BuildCardSelectState(screen, run);
++        // Restrict comparison to the local choice/preview, excluding descriptions
++        // or teammate-dependent card values that can change without our choice.
++        var selection = new Dictionary<string, object?>();
++        foreach (string key in new[] { "preview_showing", "can_confirm" })
++            if (state.TryGetValue(key, out var value)) selection[key] = value;
++        if (state.TryGetValue("preview_cards", out var previews) && previews is List<Dictionary<string, object?>> cards)
++            selection["preview_cards"] = cards.Select(c => new { id = c["id"], upgraded = c["is_upgraded"] }).ToArray();
++        return CompanionLedger.CanonicalJson(JsonSerializer.SerializeToElement(selection, _jsonOptions));
++    }
++
++    private static IEnumerable<CardModel> CompanionSelectedCards(NCardGridSelectionScreen screen)
++        => AccessTools.Field(screen.GetType(), "_selectedCards")?.GetValue(screen) as IEnumerable<CardModel>
++            ?? Array.Empty<CardModel>();
++
++    private static bool CompanionCardClickable(NCardHolder holder) => holder.IsVisibleInTree()
++        && AccessTools.Field(typeof(NCardHolder), "_isClickable")?.GetValue(holder) is true;
++
++    private static void AddCompanionFlowState(Dictionary<string, object?> state)
++    {
++        var top = NOverlayStack.Instance?.Peek();
++        if (top is Node cardScreen && (top is NCardRewardSelectionScreen or NCardGridSelectionScreen or NChooseACardSelectionScreen))
++        {
++            string key = top is NCardRewardSelectionScreen ? "card_reward" : "card_select";
++            if (state.TryGetValue(key, out var choiceValue) && choiceValue is Dictionary<string, object?> choice
++                && choice.TryGetValue("cards", out var cardsValue) && cardsValue is List<Dictionary<string, object?>> cards)
++            {
++                var holders = top is NCardRewardSelectionScreen
++                    ? FindAllSortedByPosition<NCardHolder>(cardScreen)
++                    : FindAllSortedByPosition<NGridCardHolder>(cardScreen).Cast<NCardHolder>().ToList();
++                var choices = holders.Select((holder, index) => (holder, index)).Where(p => p.holder.CardModel != null).ToList();
++                for (int i = 0; i < cards.Count && i < choices.Count; i++)
++                {
++                    cards[i]["index"] = choices[i].index;
++                    cards[i]["can_select"] = CompanionCardClickable(choices[i].holder);
++                }
++                if (top is NCardRewardSelectionScreen reward)
++                {
++                    var skip = FindAll<NCardRewardAlternativeButton>(reward).FirstOrDefault();
++                    choice["can_skip"] = skip?.IsEnabled == true && skip.IsVisibleInTree();
++                }
++            }
++        }
++        if (NOverlayStack.Instance?.Peek() is NCardGridSelectionScreen screen
++            && state.TryGetValue("card_select", out var selectionValue) && selectionValue is Dictionary<string, object?> selection)
++        {
++            var selected = CompanionSelectedCards(screen).ToHashSet();
++            selection["selected_indices"] = FindAllSortedByPosition<NGridCardHolder>(screen)
++                .Select((holder, index) => (holder, index)).Where(pair => selected.Contains(pair.holder.CardModel))
++                .Select(pair => pair.index).ToArray();
++        }
++        if (state.TryGetValue("event", out var eventValue) && eventValue is Dictionary<string, object?> eventState
++            && NEventRoom.Instance is { } room)
++        {
++            if (FindFirst<NAncientEventLayout>(room) is { } layout)
++                eventState["dialogue_line"] = layout.Get("_currentDialogueLine").AsInt32();
++            if (eventState["options"] is List<Dictionary<string, object?>> options)
++            {
++                var buttons = FindAll<NEventOptionButton>(room);
++                for (int i = 0; i < options.Count && i < buttons.Count; i++)
++                    options[i]["is_enabled"] = buttons[i].IsEnabled && buttons[i].IsVisibleInTree();
++            }
++        }
++        if (state.TryGetValue("rest_site", out var restValue) && restValue is Dictionary<string, object?> rest
++            && rest["options"] is List<Dictionary<string, object?>> restOptions)
++        {
++            var model = RunManager.Instance.DebugOnlyGetState()?.CurrentRoom as RestSiteRoom;
++            var restRoom = model == null ? null : CompanionRestRoom(model);
++            var buttons = restRoom == null ? new List<NRestSiteButton>() : FindAll<NRestSiteButton>(restRoom);
++            // Model options exist before the scene/buttons. Never leave their
++            // model-only enabled flag advertised during that loading window.
++            for (int i = 0; i < restOptions.Count; i++)
++                restOptions[i]["is_enabled"] = i < buttons.Count && i < model!.Options.Count
++                    && ReferenceEquals(buttons[i].Option, model.Options[i]) && buttons[i].Option.IsEnabled
++                    && buttons[i].IsEnabled && buttons[i].IsVisibleInTree();
++            rest["can_proceed"] = restRoom?.ProceedButton is { IsEnabled: true } proceed && proceed.IsVisibleInTree();
++        }
++    }
++
++    private static NTreasureRoom? CompanionTreasureRoom() => FindFirst<NTreasureRoom>(((SceneTree)Engine.GetMainLoop()).Root);
++    private static NRestSiteRoom? CompanionRestRoom(RestSiteRoom model)
++    {
++        var ui = NRestSiteRoom.Instance;
++        return ui != null && ui.IsNodeReady()
++            && ReferenceEquals(AccessTools.Field(typeof(NRestSiteRoom), "_room")?.GetValue(ui), model) ? ui : null;
++    }
++
++    private static NMerchantRoom? CompanionMerchantRoom(MerchantRoom model)
++    {
++        var ui = NMerchantRoom.Instance;
++        return ui != null && ReferenceEquals(ui.Room, model) && ui.IsNodeReady() && ui.Inventory != null ? ui : null;
++    }
++
++    private static NFakeMerchant? CompanionFakeMerchant() => NEventRoom.Instance is { } room ? FindFirst<NFakeMerchant>(room) : null;
++    private static Dictionary<string, object?> CompanionSubmitted() => new() { ["status"] = "ok" };
++}
+diff --git a/McpMod.CompanionGuard.cs b/McpMod.CompanionGuard.cs
+new file mode 100644
+index 0000000..bd81aac
+--- /dev/null
++++ b/McpMod.CompanionGuard.cs
+@@ -0,0 +1,615 @@
++using System;
++using System.Collections.Generic;
++using System.Globalization;
++using System.IO;
++using System.Linq;
++using System.Net;
++using System.Text;
++using System.Text.Json;
++using System.Threading.Tasks;
++using HarmonyLib;
++using MegaCrit.Sts2.Core.Combat;
++using MegaCrit.Sts2.Core.Context;
++using MegaCrit.Sts2.Core.Entities.Players;
++using MegaCrit.Sts2.Core.GameActions;
++using MegaCrit.Sts2.Core.Map;
++using MegaCrit.Sts2.Core.Models;
++using MegaCrit.Sts2.Core.Models.Events;
++using MegaCrit.Sts2.Core.Nodes.Rooms;
++using MegaCrit.Sts2.Core.Nodes.Screens.Map;
++using MegaCrit.Sts2.Core.Rooms;
++using MegaCrit.Sts2.Core.Runs;
++
++namespace STS2_MCP;
++
++public static partial class McpMod
++{
++    private static readonly CompanionLedger _companion = new();
++    private static readonly string? _companionToken = Environment.GetEnvironmentVariable("STS2_COMPANION_TOKEN");
++    private static CompanionEndTurnEvidence? _companionEndTurn;
++    private static CompanionPotionUseEvidence? _companionPotionUse;
++
++    [HarmonyPatch(typeof(PotionModel), nameof(PotionModel.OnUseWrapper))]
++    private static class CompanionPotionUsePatch
++    {
++        private static void Postfix(PotionModel __instance, Task __result)
++            => _companionPotionUse?.RecordTask(__instance, __result);
++    }
++
++    private sealed class CompanionEndTurnEvidence(Player player, object combat, int turn)
++    {
++        internal readonly Player Player = player;
++        internal readonly object Combat = combat;
++        internal readonly int Turn = turn;
++        internal bool Executed;
++    }
++
++    // On clients, RequestEnqueue serializes the submitted action and the host's
++    // response constructs a different object. Observe the authoritative execution.
++    // The installed game's ExecuteAction is synchronous, calls PlayerCmd.EndTurn
++    // only when TurnNumber matches, and returns Task.CompletedTask afterwards.
++    [HarmonyPatch(typeof(EndPlayerTurnAction), "ExecuteAction")]
++    private static class CompanionEndTurnExecutionPatch
++    {
++        private static void Prefix(Player ____player, int ____turnNumber, out CompanionEndTurnEvidence? __state)
++        {
++            __state = null;
++            var pending = _companionEndTurn;
++            if (pending != null && CompanionLedger.MatchesEndTurnExecution(
++                ReferenceEquals(pending.Player, ____player),
++                ReferenceEquals(pending.Combat, ____player.Creature.CombatState),
++                pending.Turn, ____turnNumber, ____player.PlayerCombatState?.TurnNumber))
++                __state = pending;
++        }
++
++        private static void Postfix(CompanionEndTurnEvidence? __state, Task __result)
++        {
++            if (__state != null && __result.IsCompletedSuccessfully)
++                __state.Executed = true;
++        }
++    }
++
++    private static void HandleCompanionRequest(HttpListenerRequest request, HttpListenerResponse response)
++    {
++        response.Headers["Cache-Control"] = "no-store";
++        // The raw API keeps its existing CORS behavior. This endpoint accepts only
++        // native clients or a browser on this exact loopback origin, plus a token.
++        string? origin = request.Headers["Origin"];
++        if (origin != null && (!Uri.TryCreate(origin, UriKind.Absolute, out var originUri)
++            || originUri.Scheme != "http" || !originUri.IsLoopback
++            || originUri.Authority != request.Url?.Authority))
++        {
++            SendError(response, 403, "Companion origin denied");
++            return;
++        }
++        if (origin != null)
++        {
++            response.Headers["Access-Control-Allow-Origin"] = origin;
++            response.Headers["Vary"] = "Origin";
++            response.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
++            response.Headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type";
++        }
++        if (request.HttpMethod == "OPTIONS")
++        {
++            response.StatusCode = 204;
++            response.Close();
++            return;
++        }
++        if (string.IsNullOrEmpty(_companionToken))
++        {
++            SendError(response, 503, "Companion disabled: set STS2_COMPANION_TOKEN before starting the game");
++            return;
++        }
++        if (request.Headers["Authorization"] != "Bearer " + _companionToken)
++        {
++            SendError(response, 401, "Companion token required");
++            return;
++        }
++        if (request.HttpMethod is not ("GET" or "POST"))
++        {
++            SendError(response, 405, "Method not allowed");
++            return;
++        }
++
++        Dictionary<string, JsonElement>? data = null;
++        string? payload = null;
++        if (request.HttpMethod == "POST")
++        {
++            if (request.ContentType?.Split(';')[0].Trim() != "application/json")
++            {
++                SendError(response, 415, "application/json required");
++                return;
++            }
++            const int maxBytes = 32768;
++            if (request.ContentLength64 > maxBytes)
++            {
++                SendError(response, 413, "Companion request exceeds 32 KiB");
++                return;
++            }
++            using var body = new MemoryStream();
++            byte[] buffer = new byte[4096];
++            int count;
++            while ((count = request.InputStream.Read(buffer, 0, buffer.Length)) != 0)
++            {
++                if (body.Length + count > maxBytes)
++                {
++                    SendError(response, 413, "Companion request exceeds 32 KiB");
++                    return;
++                }
++                body.Write(buffer, 0, count);
++            }
++            try
++            {
++                using var document = JsonDocument.Parse(body.ToArray());
++                if (document.RootElement.ValueKind != JsonValueKind.Object)
++                    throw new JsonException("Expected an object");
++                payload = CompanionLedger.CanonicalJson(document.RootElement);
++                data = document.RootElement.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.Clone());
++                CompanionLedger.ValidateRequest(data);
++            }
++            catch (Exception ex) when (ex is JsonException or ArgumentException or FormatException)
++            {
++                SendError(response, 400, ex.Message);
++                return;
++            }
++        }
++
++        string? actionId = data == null ? request.QueryString["action_id"] : data["action_id"].GetString();
++        var task = RunOnMainThread(() =>
++        {
++            var snapshot = ReadCompanionSnapshot();
++            _companion.Observe(snapshot, DateTimeOffset.UtcNow);
++            object? receipt = data == null ? null : _companion.Submit(data, payload!, snapshot,
++                DateTimeOffset.UtcNow, () => PrepareCompanionAction(data));
++            // Freeze the entire result on the game thread. HTTP threads never read
++            // mutable receipts or game objects, including during serialization.
++            return JsonSerializer.Serialize(_companion.Envelope(snapshot, actionId, receipt), _jsonOptions);
++        });
++        if (!task.Wait(TimeSpan.FromSeconds(5)))
++        {
++            response.StatusCode = 202;
++            SendJson(response, new { status = "uncertain", action_id = actionId,
++                message = "Main-thread response timed out. Query this action_id; never resubmit with a new ID." });
++            return;
++        }
++        SendText(response, task.GetAwaiter().GetResult(), "application/json");
++    }
++
++    private static CompanionSnapshot ReadCompanionSnapshot()
++    {
++        var run = RunManager.Instance.IsInProgress ? RunManager.Instance.DebugOnlyGetState() : null;
++        var player = run == null ? null : LocalContext.GetMe(run);
++        var state = BuildMultiplayerGameState(allowUiActions: false);
++        state["game_version"] = CompanionGameVersion;
++        state["combat_in_progress"] = CombatManager.Instance.IsInProgress;
++        if (MegaCrit.Sts2.Core.Nodes.Screens.Overlays.NOverlayStack.Instance?.Peek() is
++            MegaCrit.Sts2.Core.Nodes.Screens.GameOverScreen.NGameOverScreen)
++        {
++            state["state_type"] = "game_over";
++            state["game_over"] = new Dictionary<string, object?> { ["win"] = run?.CurrentRoom?.IsVictoryRoom };
++        }
++        AddCompanionFlowState(state);
++        if (player != null && state.TryGetValue("player", out var playerState)
++            && playerState is Dictionary<string, object?> local)
++            local["deck"] = player.Deck.Cards.Select(card => BuildCardInfo(card)).ToArray();
++        var json = JsonSerializer.SerializeToElement(state, _jsonOptions);
++        return new CompanionSnapshot(run, player?.NetId.ToString(CultureInfo.InvariantCulture),
++            IsMultiplayerRun(), json);
++    }
++
++    // Read this process's installed build, never a second game's directory.
++    // Missing/malformed metadata stays unknown rather than assuming a release.
++    private static readonly string? CompanionGameVersion = ReadCompanionGameVersion();
++    private static string? ReadCompanionGameVersion()
++    {
++        try
++        {
++            var folder = Path.GetDirectoryName(Godot.OS.GetExecutablePath());
++            if (folder == null) return null;
++            using var json = JsonDocument.Parse(File.ReadAllText(Path.Combine(folder, "release_info.json")));
++            return json.RootElement.GetProperty("version").GetString();
++        }
++        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException)
++        {
++            return null;
++        }
++    }
++
++    private static CompanionDispatch PrepareCompanionAction(Dictionary<string, JsonElement> data)
++    {
++        var tree = Godot.Engine.GetMainLoop() as Godot.SceneTree;
++        if (tree?.Root != null && IsAnyFtueVisible(tree.Root))
++            throw new ArgumentException("Blocking popup requires manual interaction before companion actions");
++        var run = RunManager.Instance.DebugOnlyGetState()!;
++        var player = LocalContext.GetMe(run)!;
++        string action = data["action"].GetString()!;
++        Func<bool> observed;
++        if (action == "play_card")
++        {
++            int index = RequiredIndex(data, "card_index");
++            var hand = player.PlayerCombatState?.Hand;
++            if (hand == null || index >= hand.Cards.Count)
++                throw new ArgumentException("Card index outside local hand");
++            var card = hand.Cards[index];
++            // Compare the actual local card object, not global battle changes.
++            var cancellation = new CompanionCardCancellationEvidence(card);
++            _companionCard = cancellation;
++            // Leaving hand precedes damage and hooks. Wait for the exact action
++            // task, except when its own local selection UI needs the next input.
++            observed = () => cancellation.EffectObserved(!hand.Cards.Contains(card),
++                NCombatRoom.Instance?.Ui?.Hand?.InCardPlay != true,
++                MegaCrit.Sts2.Core.Nodes.Screens.Overlays.NOverlayStack.Instance?.Peek() is
++                    MegaCrit.Sts2.Core.Nodes.Screens.CardSelection.NCardGridSelectionScreen or
++                    MegaCrit.Sts2.Core.Nodes.Screens.CardSelection.NChooseACardSelectionScreen or
++                    MegaCrit.Sts2.Core.Nodes.Screens.CardSelection.NChooseABundleSelectionScreen);
++            return new CompanionDispatch(() =>
++            {
++                _companionDispatchingCard = cancellation;
++                try { return ExecuteMultiplayerAction(action, data); }
++                finally { _companionDispatchingCard = null; }
++            }, observed, cancellation.NotExecutedReason);
++        }
++        else if (action == "end_turn")
++        {
++            var combat = player.Creature.CombatState;
++            if (combat == null) throw new ArgumentException("Not in combat");
++            int round = combat.RoundNumber;
++            var evidence = new CompanionEndTurnEvidence(player, combat, round);
++            _companionEndTurn = evidence;
++            // A teammate can end combat while this local request is still queued.
++            // Require positive local readiness in the exact submitted combat/round.
++            // If that transient state was missed, remain uncertain rather than infer
++            // success from a global transition. Client-side GameAction objects are
++            // serialized and replaced by the synchronizer, so their task cannot
++            // track the eventual authoritative action.
++            observed = () => evidence.Executed || CompanionLedger.EndTurnEffectObserved(
++                ReferenceEquals(player.Creature.CombatState, combat),
++                CombatManager.Instance.IsInProgress,
++                CombatManager.Instance.IsPlayerReadyToEndTurn(player), round, combat.RoundNumber);
++        }
++        else if (action is "use_potion" or "discard_potion")
++        {
++            int slot = RequiredIndex(data, "slot");
++            if (slot >= player.PotionSlots.Count) throw new ArgumentException("Potion slot outside local inventory");
++            var potion = player.GetPotionAtSlotIndex(slot);
++            if (potion == null) throw new ArgumentException("Local potion slot is empty");
++            if (action == "use_potion")
++            {
++                var evidence = new CompanionPotionUseEvidence(potion);
++                _companionPotionUse = evidence;
++                // IsQueued remains true after successful use in this game version.
++                // Removal precedes the effect, so wait for this exact use task too.
++                observed = () => evidence.EffectObserved(!ReferenceEquals(player.GetPotionAtSlotIndex(slot), potion));
++            }
++            else observed = () => !ReferenceEquals(player.GetPotionAtSlotIndex(slot), potion) && !potion.IsQueued;
++        }
++        else if (action == "choose_map_node")
++        {
++            int index = RequiredIndex(data, "index");
++            var map = NMapScreen.Instance;
++            if (map == null) throw new ArgumentException("Map is not open");
++            var options = FindAll<NMapPoint>(map).Where(p => p.State == MapPointState.Travelable && p.Point != null)
++                .OrderBy(p => p.Point!.coord.col).ToList();
++            if (index >= options.Count) throw new ArgumentException("Map index outside advertised options");
++            var coordinate = options[index].Point!.coord;
++            if (RunManager.Instance.MapSelectionSynchronizer.GetVote(player)?.coord == coordinate)
++                throw new ArgumentException("Local player already voted for this map node");
++            observed = TrackCompanionMapVote(player, run, coordinate);
++        }
++        else
++            return PrepareCompanionFlowAction(action, data, run, player);
++
++        return new CompanionDispatch(() => ExecuteMultiplayerAction(action, data), observed);
++    }
++
++    private static int RequiredIndex(Dictionary<string, JsonElement> data, string name)
++    {
++        if (!data.TryGetValue(name, out var value) || !value.TryGetInt32(out int index) || index < 0)
++            throw new ArgumentException($"'{name}' must be a nonnegative integer");
++        return index;
++    }
++}
++
++// All ledger methods are called on the game main thread. The small state machine
++// has no game dependencies so its concurrency/receipt rules can be tested alone.
++internal sealed class CompanionPotionUseEvidence(object potion)
++{
++    private System.Threading.Tasks.Task? _execution;
++
++    internal void RecordTask(object candidate, System.Threading.Tasks.Task execution)
++    {
++        if (ReferenceEquals(candidate, potion)) _execution = execution;
++    }
++
++    internal bool EffectObserved(bool removedFromSlot) => removedFromSlot && _execution?.IsCompletedSuccessfully == true;
++}
++
++internal sealed record CompanionSnapshot(object? Run, string? PlayerId, bool Multiplayer, JsonElement State);
++internal sealed record CompanionDispatch(Func<Dictionary<string, object?>> Execute, Func<bool> Observed,
++    Func<string?>? NotExecuted = null);
++
++internal sealed class CompanionCardCancellationEvidence(object card)
++{
++    internal readonly object Card = card;
++    internal object? Action;
++    internal System.Threading.Tasks.Task? ExecutionTask;
++    internal bool CancelledBeforeResources;
++    internal bool ResourcesStarted;
++
++    internal bool EffectObserved(bool leftHand, bool handIdle, bool selectionVisible) =>
++        ResourcesStarted && leftHand && handIdle &&
++        (ExecutionTask?.IsCompletedSuccessfully == true ||
++            ExecutionTask is { IsCompleted: false } && selectionVisible);
++
++    internal string? NotExecutedReason() => Action != null && CancelledBeforeResources && !ResourcesStarted
++        && ExecutionTask?.IsCompletedSuccessfully == true ? "play_card_cancelled_before_resources" : null;
++}
++
++// Reliable FIFO request/echo association, scoped to one game synchronizer.
++// Payload checks only validate the head; never search forward or resynchronize
++// after a missing/mismatched echo, even if later cards look identical.
++internal sealed class CompanionActionOrder
++{
++    private readonly Queue<(object Action, string Payload)> _sent = new();
++    private bool _valid = true;
++
++    internal void Sent(object action, string payload)
++    {
++        if (_valid) _sent.Enqueue((action, payload));
++    }
++
++    internal object? Confirm(string payload)
++    {
++        if (!_valid) return null;
++        if (!_sent.TryDequeue(out var sent) || sent.Payload != payload)
++        {
++            Invalidate();
++            return null;
++        }
++        return sent.Action;
++    }
++
++    internal void Invalidate()
++    {
++        _valid = false;
++        _sent.Clear();
++    }
++}
++
++internal sealed class CompanionLedger
++{
++    internal static readonly string[] AllowedActions = {
++        "play_card", "end_turn", "use_potion", "discard_potion", "choose_map_node",
++        "claim_reward", "select_card_reward", "skip_card_reward", "proceed", "choose_event_option", "advance_dialogue",
++        "choose_rest_option", "select_card", "confirm_selection", "cancel_selection", "open_shop",
++        "close_shop", "shop_purchase", "open_treasure", "claim_treasure_relic"
++    };
++    private readonly string _instanceId = Guid.NewGuid().ToString("N");
++    private readonly Dictionary<string, Receipt> _receipts = new(StringComparer.Ordinal);
++    private object? _run;
++    private string? _runId;
++    private string? _playerId;
++    private string? _lastState;
++    private long _version;
++    private Receipt? _pending;
++
++    internal static bool EndTurnEffectObserved(bool sameCombat, bool combatInProgress, bool localReady,
++        int submittedRound, int currentRound) => sameCombat && combatInProgress && localReady
++            && submittedRound == currentRound;
++
++    internal static bool MatchesEndTurnExecution(bool samePlayer, bool sameCombat,
++        int submittedTurn, int actionTurn, int? currentPlayerTurn) => samePlayer && sameCombat
++            && submittedTurn == actionTurn && actionTurn == currentPlayerTurn;
++
++    internal static bool SuccessfulEffectTask(System.Threading.Tasks.Task<bool>? task)
++        => task?.IsCompletedSuccessfully == true && task.Result;
++
++    private sealed class Receipt
++    {
++        public required string ActionId { get; init; }
++        public required string Status { get; set; }
++        public required string Message { get; set; }
++        public required string Payload { get; init; }
++        public long SubmittedVersion { get; init; }
++        public bool EffectObserved { get; set; }
++        public long? ObservedVersion { get; set; }
++        public DateTimeOffset Deadline { get; init; }
++        public Func<bool>? ObserveEffect { get; set; }
++        public Func<string?>? ObserveNotExecuted { get; set; }
++        public string? Reason { get; set; }
++        public object View() => new { action_id = ActionId, status = Status, message = Message, reason = Reason,
++            submitted_version = SubmittedVersion, effect_observed = EffectObserved, observed_version = ObservedVersion,
++            requires_reconciliation = Status == "uncertain" };
++    }
++
++    internal static void ValidateRequest(Dictionary<string, JsonElement> data)
++    {
++        foreach (string name in new[] { "instance_id", "run_id", "local_player_id", "action_id", "action", "expires_at" })
++            if (!data.TryGetValue(name, out var value) || value.ValueKind != JsonValueKind.String
++                || string.IsNullOrWhiteSpace(value.GetString()) || value.GetString()!.Length > 128)
++                throw new ArgumentException($"Missing or invalid '{name}'");
++        if (!data.TryGetValue("version", out var version) || version.ValueKind != JsonValueKind.Number
++            || !version.TryGetInt64(out long number) || number < 1)
++            throw new ArgumentException("Missing or invalid 'version'");
++        string expires = data["expires_at"].GetString()!;
++        bool hasOffset = expires.EndsWith("Z", StringComparison.Ordinal)
++            || expires.Length >= 6 && (expires[^6] == '+' || expires[^6] == '-') && expires[^3] == ':';
++        if (!hasOffset || !expires.Contains('T') || !DateTimeOffset.TryParse(expires, CultureInfo.InvariantCulture,
++            DateTimeStyles.RoundtripKind, out _))
++            throw new ArgumentException("expires_at must be an ISO 8601 timestamp with UTC offset");
++    }
++
++    internal void Observe(CompanionSnapshot snapshot, DateTimeOffset now)
++    {
++        if (!ReferenceEquals(_run, snapshot.Run) || _playerId != snapshot.PlayerId)
++        {
++            if (_pending != null)
++            {
++                _pending.Status = "uncertain";
++                _pending.Message = "Run or local player changed before effect confirmation";
++                _pending.ObserveEffect = null;
++                _pending.ObserveNotExecuted = null;
++            }
++            _pending = null;
++            _run = snapshot.Run;
++            _runId = _run == null ? null : Guid.NewGuid().ToString("N");
++            _playerId = snapshot.PlayerId;
++            _lastState = null;
++        }
++        string state = CanonicalJson(snapshot.State);
++        if (_lastState != state)
++        {
++            _lastState = state;
++            _version++;
++        }
++        if (_pending == null) return;
++        var pending = _pending;
++        try
++        {
++            // A matching authoritative cancellation may finish after the effect
++            // deadline. It can settle that same uncertain receipt without replay.
++            if (pending.ObserveNotExecuted?.Invoke() is { } reason)
++            {
++                pending.Status = "not_executed";
++                pending.Reason = reason;
++                pending.Message = "Exact local card action finished after cancellation before resources or card effects; observe again and make a new decision";
++                pending.ObservedVersion = _version;
++                pending.ObserveEffect = null;
++                pending.ObserveNotExecuted = null;
++                _pending = null;
++            }
++            else if (pending.Status != "accepted") return;
++            else if (pending.ObserveEffect!())
++            {
++                _pending.EffectObserved = true;
++                _pending.ObservedVersion = _version;
++                _pending.Message = "Expected local effect observed in subsequent state readback; not a claim of task completion";
++                _pending.ObserveEffect = null;
++                _pending.ObserveNotExecuted = null;
++                _pending = null;
++            }
++            else if (now >= _pending.Deadline)
++            {
++                _pending.Status = "uncertain";
++                _pending.Message = "Expected local effect was not observed within 10 seconds; manual reconciliation required";
++                _pending.ObserveEffect = null;
++            }
++        }
++        catch
++        {
++            pending.Status = "uncertain";
++            pending.Message = "Effect readback failed; manual reconciliation required";
++            pending.ObserveEffect = null;
++            pending.ObserveNotExecuted = null;
++        }
++    }
++
++    internal object Submit(Dictionary<string, JsonElement> data, string payload, CompanionSnapshot snapshot,
++        DateTimeOffset now, Func<CompanionDispatch> prepare)
++    {
++        string id = data["action_id"].GetString()!;
++        if (_receipts.TryGetValue(id, out var prior))
++            return prior.Payload == payload ? prior.View() : new { action_id = id, status = "rejected", message = "action_id was already used with a different payload" };
++        // Never evict IDs: an old retry must never accidentally execute again.
++        if (_receipts.Count >= 10000)
++            return new { action_id = id, status = "rejected", message = "Receipt capacity reached; restart the companion session" };
++        var receipt = new Receipt { ActionId = id, Payload = payload, Status = "rejected", Message = "",
++            SubmittedVersion = _version, Deadline = now.AddSeconds(10) };
++        _receipts.Add(id, receipt);
++
++        DateTimeOffset expires = DateTimeOffset.Parse(data["expires_at"].GetString()!, CultureInfo.InvariantCulture);
++        if (expires <= now || expires > now.AddSeconds(30))
++            receipt.Message = "Request expired or expires_at is more than 30 seconds ahead";
++        else if (data["instance_id"].GetString() != _instanceId || data["run_id"].GetString() != _runId
++            || data["local_player_id"].GetString() != _playerId || data["version"].GetInt64() != _version)
++            receipt.Message = "Stale instance, run, local player, or version";
++        else if (!snapshot.Multiplayer || snapshot.Run == null || snapshot.PlayerId == null)
++            receipt.Message = "An active multiplayer run and local player are required";
++        else if (_pending != null)
++            receipt.Message = "Previous action awaits effect confirmation or manual reconciliation";
++        else if (!AllowedActions.Contains(data["action"].GetString(), StringComparer.Ordinal))
++            receipt.Message = "Action is not in the companion allowlist; manual interaction required";
++        else if (snapshot.State.TryGetProperty("state_type", out var stateType)
++            && stateType.GetString() == "manual_interaction")
++            receipt.Message = "Current screen requires manual interaction";
++        else
++        {
++            CompanionDispatch dispatch;
++            try { dispatch = prepare(); }
++            catch (Exception ex)
++            {
++                receipt.Message = "Precondition failed: " + ex.Message;
++                return receipt.View();
++            }
++            // Register before dispatch: exceptions can happen after a game action
++            // was queued, and must never permit a second action or automatic retry.
++            _pending = receipt;
++            receipt.ObserveEffect = dispatch.Observed;
++            receipt.ObserveNotExecuted = dispatch.NotExecuted;
++            try
++            {
++                var result = dispatch.Execute();
++                if (result.TryGetValue("status", out var status) && status as string == "ok")
++                {
++                    receipt.Status = "accepted";
++                    receipt.Message = "Dispatched; awaiting expected local effect in subsequent readback";
++                }
++                else
++                {
++                    receipt.Message = result.TryGetValue("error", out var error) ? error?.ToString() ?? "Rejected" : "Rejected";
++                    receipt.ObserveEffect = null;
++                    receipt.ObserveNotExecuted = null;
++                    _pending = null;
++                }
++            }
++            catch (Exception ex)
++            {
++                receipt.Status = "uncertain";
++                receipt.Message = "Dispatch threw after it may have queued an action: " + ex.Message;
++                receipt.ObserveEffect = null;
++            }
++        }
++        return receipt.View();
++    }
++
++    internal object Envelope(CompanionSnapshot snapshot, string? actionId, object? receipt) => new Dictionary<string, object?>
++    {
++        ["instance_id"] = _instanceId, ["run_id"] = _runId, ["local_player_id"] = _playerId,
++        ["version"] = _version, ["state"] = snapshot.State, ["allowed_actions"] = AllowedActions,
++        ["pending_action_id"] = _pending?.ActionId,
++        ["requires_reconciliation"] = _pending?.Status == "uncertain",
++        ["receipt"] = receipt,
++        ["receipts"] = (actionId == null ? _receipts.Values.TakeLast(32)
++            : _receipts.Values.Where(r => r.ActionId == actionId)).Select(r => r.View()).ToArray()
++    };
++
++    internal static string CanonicalJson(JsonElement element)
++    {
++        using var stream = new MemoryStream();
++        using (var writer = new Utf8JsonWriter(stream)) Write(element, writer);
++        return Encoding.UTF8.GetString(stream.ToArray());
++
++        static void Write(JsonElement value, Utf8JsonWriter writer)
++        {
++            if (value.ValueKind == JsonValueKind.Object)
++            {
++                writer.WriteStartObject();
++                var names = new HashSet<string>(StringComparer.Ordinal);
++                foreach (var property in value.EnumerateObject().OrderBy(p => p.Name, StringComparer.Ordinal))
++                {
++                    if (!names.Add(property.Name)) throw new JsonException("Duplicate JSON property: " + property.Name);
++                    writer.WritePropertyName(property.Name);
++                    Write(property.Value, writer);
++                }
++                writer.WriteEndObject();
++            }
++            else if (value.ValueKind == JsonValueKind.Array)
++            {
++                writer.WriteStartArray();
++                foreach (var item in value.EnumerateArray()) Write(item, writer);
++                writer.WriteEndArray();
++            }
++            else value.WriteTo(writer);
++        }
++    }
++}
+diff --git a/docs/companion-api.md b/docs/companion-api.md
+new file mode 100644
+index 0000000..805d15a
+--- /dev/null
++++ b/docs/companion-api.md
+@@ -0,0 +1,67 @@
++# Guarded companion API
++
++`GET /api/v1/companion` and `POST /api/v1/companion` require `Authorization: Bearer <STS2_COMPANION_TOKEN>`. Set this environment variable before launching the game. The raw multiplayer API keeps its original behavior.
++
++Every POST contains `instance_id`, `run_id`, `local_player_id` (NetId string), `version`, a unique `action_id`, `expires_at` (ISO 8601 with offset; at most 30 seconds ahead), `action`, and the parameters below. Send the exact identities/version obtained from GET. Body limit: 32 KiB.
++
++The response envelope contains `state`, `allowed_actions`, `receipt`, recent `receipts`, `pending_action_id`, and `requires_reconciliation`. GET `?action_id=...` retrieves a specific receipt. An `accepted` receipt means dispatch only. Wait for its `effect_observed=true` before submitting another action. A transport timeout or an `uncertain` receipt must never be retried using a fresh ID. An identical ID/payload returns the original receipt; a changed payload with that ID is rejected.
++
++An exact local `PlayCardAction` that finishes after cancellation before entering `CardModel.SpendResources` can settle as `status="not_executed"`, `reason="play_card_cancelled_before_resources"`, `effect_observed=false`, `requires_reconciliation=false`, with `observed_version` set to the confirming readback. This clears its pending gate, including when the evidence arrives after an `uncertain` timeout. The old action ID remains idempotent: observe the current state and make a new decision instead of replaying it. Resource-boundary entry, missing exact action identity, incomplete/faulted execution, or absence of cancellation evidence keeps the outcome uncertain. Hosts retain the exact submitted action object. Clients associate all locally sent ordinary actions, including manual actions, with their reliable ordered host echoes using a FIFO scoped to the game synchronizer. Only the next echo may consume the next request; the full serialized action and run location must match. Missing or mismatched echoes, failed sends, or disconnected sends invalidate correlation for that synchronizer instead of searching for a similar card/target. This uses the native protocol without adding or changing packets.
++
++## Actions and local effect evidence
++
++| Action | Parameters | Required local state | Effect evidence |
++|---|---|---|---|
++| `play_card` | `card_index`, `target` when needed | combat play phase | Exact card leaves hand after resources start, with completed play task or pending local selection |
++| `end_turn` | none | combat play phase, not ready | Valid authoritative local end-turn execution, or same-combat/round local ready state |
++| `use_potion` | `slot`, `target` when needed | potion usable | Exact potion leaves its local slot and is no longer queued |
++| `discard_potion` | `slot` | occupied local slot | Exact potion leaves slot and is no longer queued |
++| `choose_map_node` | `index` in `map.next_options` | map, new local vote | Exact player/source/coordinate/map-generation vote recorded by synchronizer |
++| `claim_reward` | `index` in `rewards.items` | rewards | Reward reports successful selection, its own card reward screen opens, or removal choice opens |
++| `select_card_reward` | `card_index` in `card_reward.cards` | card reward | Exact selected card object appears in local deck |
++| `skip_card_reward` | none | card reward with `can_skip` | Local card reward screen closes |
++| `proceed` | none | enabled proceed in rewards/rest/shop/fake merchant/treasure | Local map opens |
++| `choose_event_option` | `index` in `event.options` | event; visible, enabled, unlocked, not chosen | Shared choice: exact local vote; individual choice: corresponding option task completes or opens a selection; proceed option: its task completes and the local map opens |
++| `advance_dialogue` | none | event with `in_dialogue` | Local dialogue line advances or dialogue closes |
++| `choose_rest_option` | `index` in `rest_site.options` | visible enabled rest choice | Corresponding local rest task completes with proceed enabled, or opens a selection |
++| `select_card` | `index` in `card_select.cards` | card selection, no preview yet | Exact card toggles selection, local preview changes, or selection task completes |
++| `confirm_selection` | none | `card_select.can_confirm` | Local selection task completes |
++| `cancel_selection` | none | `card_select.can_cancel` | Selection closes or preview returns to choosing |
++| `open_shop` | none | shop/fake merchant, inventory closed | Local inventory opens |
++| `close_shop` | none | shop/fake merchant, inventory open | Local inventory closes |
++| `shop_purchase` | `index` in shop items | inventory open, stocked, affordable | Local purchase task returns success after effects/hooks, or opens a selection |
++| `open_treasure` | none | treasure with `can_open_chest` | Relic collection becomes visible or proceed becomes enabled |
++| `claim_treasure_relic` | `index` in `treasure.relics` | opened treasure collection | Authoritative `OnPicked` for exact local player, relic offer, and relic index |
++
++Menus, profile changes, load/abandon, undo end turn, and unlisted actions are rejected. Blocking FTUE/popups must be handled manually before companion actions. The local UI and ownership checks run on the game thread immediately before dispatch.
++
++## Read-only state and adapter fields
++
++2026-10-24 companion additions:
++
++- `state.game_version`: the running executable's `release_info.json` version; null if unavailable, never an assumed release.
++- `state.combat_in_progress`: native combat activity. A combat room can remain visible briefly while rewards load; it is not by itself a finished battle result.
++- `player.hand[].dynamic_vars`: native base values, not final predictions. `adviser_rule` is set only for audited, unenchanted, unreplayed Ironclad Strike/Defend; modifiers still require separate checks.
++- Combat `players[].status` and bounded relic descriptions expose public teammate modifiers.
++- `state_type=game_over` includes `game_over.win` from the current native room's victory flag when available; null is unknown.
++- A `play_card` receipt waits for the exact associated play task to complete successfully, as well as leaving hand and idle hand UI. A still-pending task may instead acknowledge reaching a local card-selection screen so that its next choice can proceed. This does not claim that the unresolved choice has finished the full card effect.
++
++Companion GET uses the existing multiplayer state shape while disabling legacy auto-open side effects. It never clicks a treasure chest, opens a merchant inventory, or opens the fake merchant inventory. Explicit open/close actions are required.
++
++- `player.deck`: local deck card details.
++- `shop.inventory_open`: normal merchant inventory visibility; `null` while the matching local shop UI is loading, so no open/close action is available yet.
++- `fake_merchant.inventory_open`; its items/proceed flag remain under `fake_merchant.shop`.
++- `treasure.can_open_chest`: explicit chest-opening availability.
++- `treasure.bids[].voted` and `vote_relic_index`: primitive fields, correcting the legacy serializer's opaque vote object. **Local bids can be predicted UI votes; only the receipt proves authoritative confirmation.**
++- `card_select.selected_indices`: selected cards on supported grid selection screens.
++- `card_reward.cards[].can_select` and `card_select.cards[].can_select`: actual local clickability, including the game's 350 ms reward opening delay. Wait when false.
++- `event.options[].is_enabled`: actual local visible/enabled state; `rest_site.options[].is_enabled` also requires the ready UI for the exact local room and its matching option button. While the rest scene/buttons are loading, all rest options and `can_proceed` are false.
++- `event.dialogue_line`: ancient dialogue line number.
++
++Common transitions: `rewards -> card_reward -> rewards -> map`; `event -> card_select -> event`; `rest_site -> card_select -> rest_site -> map`. A shared event/map/treasure vote can leave the current screen visible while waiting for teammates. Do not repeat a recorded local vote. Ordinary event proceed options use `choose_event_option`, not `proceed`. Close a shop before `proceed`.
++
++## Verification scope
++
++The ledger is tested outside the game for idempotency, expiry, stale identity/version rejection, pending serialization, uncertain outcomes, and all 20 action names. Installed-game reflection checks verify the private fields/methods used by observation hooks and selection readers. The native multiplayer progression test is a separate required acceptance step: unit/reflection checks do not establish game animation, reward, event, or network behavior.
++
++Expected effects that are not observed within 10 seconds become uncertain and block further guarded submissions for that run. Hooks never treat a teammate's generic state change or a queued acknowledgement as completion. A hook unavailable after a game update may conservatively leave a receipt unresolved; do not bypass it by generating another action ID.

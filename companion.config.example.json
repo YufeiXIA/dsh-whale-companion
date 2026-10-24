@@ -1,0 +1,12 @@
+{
+  "dshExe": "%LOCALAPPDATA%/Programs/DeepSeek Harness/DeepSeek Harness.exe",
+  "dshHome": "%USERPROFILE%/.dsh",
+  "port": 19388,
+  "whalePetPlugin": "",
+  "llmProviderProfile": "",
+  "llmProviderId": "",
+  "electronExe": "tools/electron44/electron.exe",
+  "pwshExe": "C:/Program Files/PowerShell/7/pwsh.exe",
+  "voiceAdapterRoot": "",
+  "sts2Game": "C:/Program Files (x86)/Steam/steamapps/common/Slay the Spire 2"
+}

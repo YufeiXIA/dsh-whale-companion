@@ -1,0 +1,19 @@
+# Machine-specific paths
+companion.config.json
+
+# Runtime output, logs and private host URLs
+outputs/
+downloads/
+logs/
+
+# Downloaded runtimes and built game mods
+tools/electron44/
+upstream/
+
+# Isolated game seats (game files and saves)
+app/companion-test/
+
+node_modules/
+
+# Leftovers from interrupted test runs
+.test-data/

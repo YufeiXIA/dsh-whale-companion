@@ -1,0 +1,5 @@
+* text=auto
+# Applied with git apply; keep its bytes exactly.
+*.patch -text
+*.webm binary
+*.woff2 binary

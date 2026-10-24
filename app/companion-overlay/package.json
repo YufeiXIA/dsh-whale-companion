@@ -1,0 +1,7 @@
+{
+  "name": "whale-companion-overlay",
+  "version": "0.1.0",
+  "private": true,
+  "main": "main.cjs",
+  "description": "Native window for the existing DSH companion session"
+}

@@ -1,0 +1,9 @@
+- insert:
+    - id: dsh-game-companion
+      name: dsh-game-companion
+      config:
+        bridgeUrl: http://127.0.0.1:15527
+        provider: deepseek-official
+        model: deepseek-flash
+        reasoningEffort: low
+        turnTimeoutMs: 90000
