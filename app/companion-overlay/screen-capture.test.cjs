@@ -2,6 +2,16 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const {createScreenCapture}=require('./screen-capture.cjs');
 
+test('authorized passive viewing can capture the current window after long keyboard inactivity',async()=>{
+  const sample={available:true,app:'media',windowId:'42',idleMs:3600000};
+  const bodies=[];
+  const capture=createScreenCapture({inspect:async()=>sample,getSources:async()=>[
+    {id:'window:42:0',thumbnail:{isEmpty:()=>false,toJPEG:()=>Buffer.from([255,216,255,217])}}
+  ],upload:async body=>bodies.push(body)});
+  await capture.capture('passive-ticket',sample);capture.close();
+  assert.equal(bodies[0]?.jpeg,Buffer.from([255,216,255,217]).toString('base64'));
+});
+
 test('only the selected active window is consumed, in memory, with a visible capture signal',async t=>{
   const sample={available:true,app:'browser',windowId:'42',idleMs:0};
   let selected=0,uploaded=0,signals=0;

@@ -17,6 +17,7 @@ The code is new, not a fork. It still uses the original plugin's 95 animations, 
 - 69 new animations.
 - Desktop tricks: feeding, head pats, flinging, edge snapping and peeking in from the screen edge, walking along the taskbar, sitting on top of windows, hiding when another app goes fullscreen, focus timers, and stretch, water and bedtime reminders.
 - Optional: she can check in now and then. She only knows what kind of app you're using. A screen glance is opt-in and stays in memory.
+- Reading or watching videos without keyboard or mouse activity does not mute proactive company. Each unanswered greeting adds five minutes to the selected interval; replying clears the extra delay. She can revisit the same app with a new topic.
 - Experimental *Slay the Spire 2* teammate.
 
 When docked, she stays half-hidden during greetings, replies, clicks and typing. Speech bubbles open diagonally toward the inside of the screen, with the input bar beside the edge. Drag her out to undock. This update also keeps the previous animation visible until its replacement starts, cancels pending screen glances when paused, and refines the title font and header position. See [release notes (Chinese)](docs/fixed-half-dock.md).

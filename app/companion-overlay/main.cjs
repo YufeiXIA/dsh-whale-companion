@@ -389,7 +389,7 @@ async function start() {
     if(sample.available&&!changed&&Date.now()-lastForwardAt<10000)return;
     if(sample.available){forwarded=true;lastForwardAt=Date.now();}
     if(changed)activityContext++;
-    if (win && !win.isDestroyed() && (!sample.available || changed || sample.idleMs >= 120000)) {
+    if (win && !win.isDestroyed() && (!sample.available || changed)) {
       win.webContents.send('companion-activity-invalid');
     }
     lastActivityApp = sample.available ? sample.app : undefined;

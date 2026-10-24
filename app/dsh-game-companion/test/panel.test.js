@@ -3,14 +3,16 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 
-test('ambient status distinguishes waiting, focus, quiet time and the unanswered stop',async()=>{
+test('ambient status distinguishes waiting, focus, quiet time and slower unanswered company',async()=>{
   const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
   const source=html.slice(html.indexOf('function ambientStatusText('),html.indexOf('function render(value)'));
   const context={};runInNewContext(source,context);
   const status={enabled:true,waitingReason:'cooldown',quietUntil:300000};
   assert.match(context.ambientStatusText(status,true,false,0),/5 分钟/);
   assert.match(context.ambientStatusText({...status,waitingReason:'companion'},true,false,0),/切回其他应用/);
-  assert.match(context.ambientStatusText({...status,waitingReason:'unanswered'},true,false,0),/回我一句/);
+  assert.match(context.ambientStatusText({...status,unanswered:2},true,false,0),/放慢/);
+  assert.match(context.ambientStatusText({...status,unanswered:3},true,false,0),/已加 15 分钟/);
+  assert.match(context.ambientStatusText(status,true,true,0,true),/全屏自动隐藏/);
   assert.match(context.ambientStatusText(status,true,true,0),/免打扰/);
   assert.match(context.ambientStatusText(status,false,false,0),/合作游戏/);
   assert.match(context.ambientStatusText({...status,enabled:false},true,false,0),/已关闭/);

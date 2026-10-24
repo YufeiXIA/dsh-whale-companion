@@ -103,7 +103,7 @@ test('an unclassified window reaches proactive chat and an unavailable frame doe
   f.host.ambient.nextAt=time;f.host.ambient.lastUserAt=time-60000;
   let result;
   for(let i=0;i<6;i++){
-    result=await f.host.desktopSample({available:true,app:'other',idleMs:0,contextKey:1,captureSupported:true});
+    result=await f.host.desktopSample({available:true,app:'other',idleMs:600000,contextKey:1,captureSupported:true});
     time+=10000;
   }
   assert.ok(result.capture?.ticket);
@@ -112,6 +112,7 @@ test('an unclassified window reaches proactive chat and an unavailable frame doe
   const sent=f.calls.find(([kind])=>kind==='followup');assert.ok(sent);
   const prompt=JSON.parse(sent[1].content[0].text);
   assert.equal(prompt.environment.application,'其他程序');assert.equal(prompt.environment.visual,null);
+  assert.match(prompt.response_style,/主动关心、好奇/);
   await f.registered.get('companion_say').execute({text:'刚才突然想到你，就想过来聊一句。',spoken:true},{});
   assert.equal(f.host.messages.at(-1).ambient,true);
   assert.equal(f.host.ambient.status().lastResult,'said');

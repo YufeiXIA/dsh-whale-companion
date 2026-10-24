@@ -9,7 +9,7 @@ function createScreenCapture({ getSources, inspect, upload, onCapture = () => {}
       try {
         if (!isAllowed()) return await upload({ ticket, unavailable: true });
         const before = await inspect();
-        if (!isAllowed() || !before.available || before.sensitive || before.app !== expected.app || before.windowId !== expected.windowId || before.idleMs >= 120000) {
+        if (!isAllowed() || !before.available || before.sensitive || before.app !== expected.app || before.windowId !== expected.windowId) {
           return await upload({ ticket, unavailable: true });
         }
         const sources = await getSources({ types: ['window'], thumbnailSize: { width: 1280, height: 720 }, fetchWindowIcons: false });

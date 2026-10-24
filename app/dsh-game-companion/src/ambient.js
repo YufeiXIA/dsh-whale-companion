@@ -22,7 +22,7 @@ export class AmbientCompanion {
     this.lastCaptureAt = Number(saved.lastCaptureAt) || 0;
     this.nextAt = Math.max(Number(saved.nextAt) || 0, now() + 60000);
     this.attempts = (saved.attempts ?? []).filter(at => Number.isFinite(at) && now() - at < 3600000);
-    this.unanswered = Math.min(2, Math.max(0, Number(saved.unanswered) || 0));
+    this.unanswered = Number.isSafeInteger(saved.unanswered) && saved.unanswered > 0 ? saved.unanswered : 0;
     this.lastUserAt = now();
     this.lastSampleAt = 0;
     this.revision = 0;
@@ -46,7 +46,7 @@ export class AmbientCompanion {
       available: this.fresh(), unanswered: this.unanswered,
       waitingReason,
       quietUntil: this.nextAt, lastResult: this.result,
-      policy: '按所选节奏搭话；看图须你先开启，至少间隔5分钟，截图只在内存里，看完就丢；两次未回应后安静陪伴。' };
+      policy: '按所选节奏主动陪伴，阅读或看视频时也会搭话；看图须先开启，至少间隔5分钟；每次未回复在基础间隔上累加5分钟，回复后恢复。' };
   }
 
   fresh() {
@@ -55,7 +55,7 @@ export class AmbientCompanion {
 
   valid(event) {
     return this.fresh() && this.revision === event.revision && this.now() < event.expiresAt &&
-      this.current.idleMs < 120000 && this.current.app !== 'companion';
+      this.current.app !== 'companion';
   }
 
   invalidate() {
@@ -81,7 +81,7 @@ export class AmbientCompanion {
     this.revision++;
   }
 
-  cooldown() { return (this.minMinutes + this.random() * (this.maxMinutes - this.minMinutes)) * 60000; }
+  cooldown() { return (this.minMinutes + this.random() * (this.maxMinutes - this.minMinutes) + this.unanswered * 5) * 60000; }
 
   captureDue() { return this.visionEnabled && this.now() - this.lastCaptureAt >= 300000; }
 
@@ -95,18 +95,12 @@ export class AmbientCompanion {
     if (!this.enabled || !sample.available) { this.invalidate(); return null; }
     if (gap || sample.app !== this.current?.app || sample.contextKey !== this.current?.contextKey) {
       this.revision++;
-      this.current = { app: sample.app, contextKey: sample.contextKey, since: now, idleMs: sample.idleMs, offered: false,
-        longOffered: false, away: sample.idleMs >= 300000 };
+      this.current = { app: sample.app, contextKey: sample.contextKey, since: now, offered: false, longOffered: false };
     }
     const current = this.current;
-    if (sample.idleMs >= 120000 && current.idleMs < 120000) this.revision++;
-    current.idleMs = sample.idleMs;
-    if (sample.idleMs >= 300000) current.away = true;
     this.waitingReason = null;
     if (blocked) this.waitingReason = 'busy';
     else if (sample.app === 'companion') this.waitingReason = 'companion';
-    else if (sample.idleMs >= 120000) this.waitingReason = 'away';
-    else if (this.unanswered >= 2) this.waitingReason = 'unanswered';
     else if (now < this.nextAt) this.waitingReason = 'cooldown';
     else if (now - this.lastUserAt < 60000) this.waitingReason = 'recent-chat';
     else if (now - current.since < 45000) this.waitingReason = 'settling';
@@ -114,12 +108,13 @@ export class AmbientCompanion {
     this.attempts = this.attempts.filter(at => now - at < 3600000);
     if (this.attempts.length >= Math.max(2, Math.floor(60 / this.maxMinutes))) { this.waitingReason = 'hour-limit'; return null; }
     let kind;
-    if (current.away && sample.idleMs < 30000) kind = 'returned';
-    else if (!current.offered) kind = 'application';
+    if (!current.offered) kind = 'application';
     else if (!current.longOffered && now - current.since >= 2700000 && ['code', 'documents'].includes(sample.app)) kind = 'long-focus';
-    else { this.waitingReason = 'no-topic'; return null; }
-    const key = `${kind}:${sample.app}`;
-    if (this.topics.has(key) && now - this.topics.get(key) < 1800000) { this.waitingReason = 'topic-cooldown'; return null; }
+    else kind = 'company';
+    let key = `${kind}:${sample.app}`;
+    if (this.topics.has(key) && now - this.topics.get(key) < 1800000) {
+      kind = 'company'; key = `company:${sample.app}`;
+    }
     this.waitingReason = 'ready';
     const [category, application] = ambientApps[sample.app];
     return { kind, category, application, minutes: Math.floor((now - current.since) / 60000),
@@ -129,16 +124,16 @@ export class AmbientCompanion {
   attempted(event) {
     this.attempts.push(this.now());
     this.nextAt = this.now() + this.cooldown();
-    this.topics.set(event.key, this.now());
+    if (event.kind !== 'company') this.topics.set(event.key, this.now());
     this.current.offered = true;
-    if (event.kind === 'returned') this.current.away = false;
     if (event.kind === 'long-focus') this.current.longOffered = true;
     this.result = 'thinking';
     this.waitingReason = 'cooldown';
   }
 
   delivered() {
-    this.unanswered = Math.min(2, this.unanswered + 1);
+    this.unanswered++;
+    this.nextAt += 300000;
     this.result = 'said';
   }
 }
