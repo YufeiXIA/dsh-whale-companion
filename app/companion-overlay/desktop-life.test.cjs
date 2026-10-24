@@ -1,5 +1,12 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
+const {quickChatY}=require('./desktop-life.cjs');
+
+test('quick chat lifts a floor window fully above the taskbar',()=>{
+  assert.equal(quickChatY({y:627,height:473},{y:0,height:1040}),567);
+  assert.equal(quickChatY({y:200,height:473},{y:0,height:1040}),200);
+  assert.equal(quickChatY({y:1000,height:473},{y:400,height:1040}),967);
+});
 const {feetOffset,floorY,strollRoute,perchRoute,perchLost,stepFall,createHealthClock}=require('./desktop-life.cjs');
 
 const area={x:0,y:0,width:1920,height:1040},bounds={x:900,y:300,width:300,height:473};

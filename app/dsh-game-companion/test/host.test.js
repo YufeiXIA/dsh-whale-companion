@@ -75,6 +75,24 @@ test('vision capture requires an expiring single-use ticket; context changes can
   assert.equal(stored.ambient.maxMinutes,5);assert.equal(JSON.stringify(stored).includes('base64'),false);
 });
 
+test('vision cancellation aborts pending work immediately without changing saved settings, even while switching chats',async t=>{
+  const f=await fixture(t),settings=f.host.ambient.save();
+  for(const changing of [false,true]){
+    const controller=new AbortController();
+    f.host.pendingVision={ticket:'pending-frame',controller,processing:true};
+    f.host.changingConversation=changing;
+    try{
+      const canceled=f.host.control({action:'vision-cancel'});
+      assert.equal(controller.signal.aborted,true);
+      assert.equal(f.host.pendingVision,null);
+      const status=await canceled;
+      assert.equal(status.ambient.visionEnabled,settings.visionOptIn);
+      assert.deepEqual(f.host.ambient.save(),settings);
+    }finally{f.host.changingConversation=false;}
+  }
+  assert.equal(f.runtime.requests.includes('POST'),false);
+});
+
 const identity = { instance_id: 'test-instance', run_id: 'test-run', local_player_id: 'whale' };
 test('chat animation travels from prompt/tool to saved message without changing voice emotion', async t=>{
   const f=await fixture(t);

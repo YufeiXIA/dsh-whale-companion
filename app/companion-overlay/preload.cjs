@@ -25,11 +25,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   ipcRenderer.on('companion-activity-invalid',()=>window.dispatchEvent(new CustomEvent('companion-activity-invalid')));
   // The panel announced these before this script attached, so seed them from its saved settings.
   const saved=key=>{try{return JSON.parse(localStorage.getItem(key)??'null');}catch{return null;}};
-  void ipcRenderer.invoke('companion-window','edge-peek',saved('companion-edge-peek')===true);
   void ipcRenderer.invoke('companion-window','quiet-state',{focusUntil:Number(saved('companion-focus-until'))||0,quietUntil:Number(saved('companion-quiet-until'))||0,
     visionPausedUntil:Number(saved('companion-vision-paused-until'))||0});
-  window.addEventListener('companion-edge-peek',event=>void ipcRenderer.invoke('companion-window','edge-peek',event.detail===true));
-  window.addEventListener('companion-edge-talk',event=>void ipcRenderer.invoke('companion-window','edge-talk',event.detail==='1'));
   window.addEventListener('companion-quiet-state',event=>{
     const [focusUntil,quietUntil,visionPausedUntil]=String(event.detail).split(',').map(Number);
     void ipcRenderer.invoke('companion-window','quiet-state',{focusUntil,quietUntil,visionPausedUntil});
@@ -37,6 +34,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   ipcRenderer.on('companion-vision-capture',()=>window.dispatchEvent(new CustomEvent('companion-vision-capture')));
   for(const name of ['fullscreen','health','edge','peek'])ipcRenderer.on('companion-'+name,(_event,value)=>window.dispatchEvent(new CustomEvent('companion-'+name,{detail:value})));
   for(const name of ['perched','perch-failed'])ipcRenderer.on('companion-'+name,()=>window.dispatchEvent(new CustomEvent('companion-'+name)));
+  ipcRenderer.on('companion-dock-locked',()=>window.dispatchEvent(new CustomEvent('companion-dock-locked')));
   const desktopPrefs=detail=>{const [stroll,fullscreenHide]=String(detail).split(',');return {stroll:stroll==='1',fullscreenHide:fullscreenHide!=='0'};};
   void ipcRenderer.invoke('companion-window','desktop-prefs',desktopPrefs((saved('companion-stroll')===true?'1':'0')+','+(saved('companion-fullscreen-hide')===false?'0':'1')));
   window.addEventListener('companion-desktop-prefs',event=>void ipcRenderer.invoke('companion-window','desktop-prefs',desktopPrefs(event.detail)));
@@ -77,6 +75,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   ipcRenderer.on('companion-bounce',()=>document.getElementById('pet').animate([{scale:'1.08 .92'},{scale:'1 1'}],{duration:220}));
   window.addEventListener('companion-turn',()=>void ipcRenderer.invoke('companion-window','turn'));
   window.addEventListener('companion-motion-stop',()=>void ipcRenderer.invoke('companion-window','motion-stop'));
+  window.addEventListener('companion-motion-state',event=>void ipcRenderer.invoke('companion-window','motion-state',event.detail===true));
   let pointFrame;
   window.addEventListener('companion-point-motion',event=>{
     cancelAnimationFrame(pointFrame);
@@ -122,33 +121,37 @@ window.addEventListener('DOMContentLoaded', async () => {
     if(event.button!==0)return;
     dragging=true;moved=false;startX=event.screenX;startY=event.screenY;
     pet.setPointerCapture(event.pointerId);
-    void ipcRenderer.invoke('companion-window','drag-start');
   });
   pet.addEventListener('pointermove',event=>{
     if(!dragging)return;
     if(!moved&&Math.abs(event.screenX-startX)+Math.abs(event.screenY-startY)>5){
       moved=true;window.dispatchEvent(new CustomEvent('companion-drag',{detail:true}));
+      void ipcRenderer.invoke('companion-window','drag-start',{x:startX,y:startY});
     }
     if(moved)void ipcRenderer.invoke('companion-window','drag-move');
   });
-  const endDrag=()=>{dragging=false;if(moved)window.dispatchEvent(new CustomEvent('companion-drag',{detail:false}));void ipcRenderer.invoke('companion-window','drag-end',moved&&!matchMedia('(prefers-reduced-motion: reduce)').matches);};
+  const endDrag=()=>{dragging=false;inside=undefined;if(moved){window.dispatchEvent(new CustomEvent('companion-drag',{detail:false}));void ipcRenderer.invoke('companion-window','drag-end',!matchMedia('(prefers-reduced-motion: reduce)').matches);}};
   pet.addEventListener('pointerup',endDrag);pet.addEventListener('pointercancel',endDrag);
   pet.addEventListener('click',event=>{if(moved){event.stopImmediatePropagation();event.preventDefault();}},true);
   const quickForm=document.getElementById('quick-chat'),quickInput=document.getElementById('quick-message');
+  const focusQuick=()=>void ipcRenderer.invoke('companion-window','quick-focus').then(()=>quickInput.focus());
+  window.addEventListener('companion-focus-quick',focusQuick);
+  ipcRenderer.on('companion-focus-quick',()=>{window.dispatchEvent(new CustomEvent('companion-open-quick'));focusQuick();});
   quickInput.addEventListener('pointerdown',event=>{
-    event.preventDefault();void ipcRenderer.invoke('companion-window','quick-focus').then(()=>quickInput.focus());
+    event.preventDefault();focusQuick();
   });
   window.addEventListener('companion-quick-closed',()=>{inside=undefined;void ipcRenderer.invoke('companion-window','quick-release');});
   document.addEventListener('mousemove',event=>{
     const compact=body.classList.contains('compact'),r=pet.getBoundingClientRect();
     const near=compact&&event.clientX>=r.left-24&&event.clientX<=r.right+24&&event.clientY>=r.top-24&&event.clientY<=r.bottom+24;
-    const quick=compact&&(quickForm.contains(event.target)||document.activeElement===quickInput);
+    const quick=compact&&quickForm.contains(event.target);
     const hit=dragging||(!compact?Boolean(event.target.closest('.companion-card,#nativebar')):near||quick);
     if(hit!==inside){inside=hit;void ipcRenderer.invoke('companion-window',compact?'quick-hover':'hover',hit);
       window.dispatchEvent(new CustomEvent('companion-pet-near',{detail:near||quick}));}
     if(hit&&body.classList.contains('compact'))void ipcRenderer.invoke('companion-window','look');
   });
   ipcRenderer.on('companion-focus-chat', () => {
+    if(body.hasAttribute('data-edge')){window.dispatchEvent(new CustomEvent('companion-open-quick'));focusQuick();return;}
     body.classList.remove('compact');document.getElementById('chat')?.focus();
   });
   document.addEventListener('keydown', event => {

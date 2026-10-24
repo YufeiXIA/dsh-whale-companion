@@ -8,13 +8,15 @@
 
 | 文件 | 做什么 |
 |---|---|
-| `main.cjs` | 窗口、托盘、拖拽、贴边偷看、爬窗口、全屏躲开、提醒 |
+| `main.cjs` | 窗口、托盘、拖拽、固定半身停靠、爬窗口、全屏躲开、提醒 |
 | `desktop-life.cjs` | 散步路线、爬窗口位置、掉落、提醒计时 |
 | `edge-snap.cjs`、`roaming.cjs`、`inertia.cjs` | 贴边、乱跑、甩出去 |
 | `activity.cjs` + `tools/companion-activity.ps1` | 每 2 秒看一次前台是哪类程序、是否全屏 |
 | `screen-capture.cjs` | 截当前窗口，只放内存 |
 
 `*-check.cjs` 和 `smoke.cjs` 是作者在自己电脑上检查真实窗口用的，需要宿主在跑。
+
+`--edge-check` 使用 `dock-check.cjs` 检查左右停靠、缩放、气泡、输入和透明区域点透；回复为模拟数据，不发送聊天或屏幕图片。停靠后只有拖拽会解除，聊天和悬停都保持半身。实现与验证范围见 [本版说明](../../docs/fixed-half-dock.md)。
 
 ## 测试
 

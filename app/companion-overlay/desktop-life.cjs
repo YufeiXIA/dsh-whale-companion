@@ -8,6 +8,8 @@ function feetOffset(scale) { return compactFooter(scale) + 43 * scale; }
 // Window y that puts her feet just on the taskbar (the bottom of the work area).
 function floorY(area, height, scale) { return Math.round(area.y + area.height - height + feetOffset(scale) - 4); }
 
+function quickChatY(bounds, area) { return Math.min(bounds.y, area.y + area.height - bounds.height); }
+
 function strollRoute(bounds, area, direction, random = Math.random, scale = 1) {
   const minX = area.x, maxX = Math.max(minX, area.x + area.width - bounds.width);
   let step = direction * (80 + random() * 200), target = bounds.x + step;
@@ -64,4 +66,4 @@ function createHealthClock({ waterMinutes = 60, stretchMinutes = 50, breakMinute
   };
 }
 
-module.exports = { feetOffset, floorY, strollRoute, perchRoute, perchLost, stepFall, createHealthClock };
+module.exports = { feetOffset, floorY, quickChatY, strollRoute, perchRoute, perchLost, stepFall, createHealthClock };

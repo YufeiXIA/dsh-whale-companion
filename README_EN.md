@@ -19,6 +19,8 @@ The code is new, not a fork. It still uses the original plugin's 95 animations, 
 - Optional: she can check in now and then. She only knows what kind of app you're using. A screen glance is opt-in and stays in memory.
 - Experimental *Slay the Spire 2* teammate.
 
+When docked, she stays half-hidden during greetings, replies, clicks and typing. Speech bubbles open diagonally toward the inside of the screen, with the input bar beside the edge. Drag her out to undock. This update also keeps the previous animation visible until its replacement starts, cancels pending screen glances when paused, and refines the title font and header position. See [release notes (Chinese)](docs/fixed-half-dock.md).
+
 ## Setup
 
 You need Windows 10/11, DSH Desktop (tested on 0.2.0-rc.2), PowerShell 7, and Electron 44.0.0 unpacked into `tools/electron44/`.

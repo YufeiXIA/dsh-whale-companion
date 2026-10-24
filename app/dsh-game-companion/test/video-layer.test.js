@@ -38,3 +38,22 @@ test('old end event does not finish a newer action; ball waits for its seek befo
   first.onseeked();await Promise.resolve();assert.equal(first.id,'pet');assert.equal(ready,1);
   first.onended();assert.equal(ended,1);
 });
+
+test('failed or still-pending playback keeps the last visible layer',async()=>{
+  const first=layer(),player=create(first),back=first.other;let failed=0,release;
+  player.onerror=()=>failed++;
+  back.play=()=>new Promise(resolve=>{release=resolve;});
+  player.start('/whale-pet/idle/breathing.webm',false);
+  back.onloadeddata();
+  assert.ok(first.classList.contains('pet-front'));
+  assert.equal(first.pauses,0);
+  release();await Promise.resolve();
+  assert.ok(back.classList.contains('pet-front'));
+  const visiblePauses=back.pauses;
+  first.play=()=>Promise.reject(new Error('decode failed'));
+  player.start('/whale-pet/daily/quick_nap.webm',false);
+  first.onloadeddata();await Promise.resolve();await Promise.resolve();
+  assert.equal(failed,1);
+  assert.ok(back.classList.contains('pet-front'),'a rejected replacement cannot erase the visible character');
+  assert.equal(back.pauses,visiblePauses);
+});

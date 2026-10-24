@@ -8,7 +8,7 @@ const { createGameLifecycle } = require('./game-lifecycle.cjs');
 const { createActivitySensor } = require('./activity.cjs');
 const { createScreenCapture } = require('./screen-capture.cjs');
 const { edgeSnap } = require('./edge-snap.cjs');
-const { floorY, strollRoute, perchRoute, perchLost, stepFall, createHealthClock } = require('./desktop-life.cjs');
+const { floorY, quickChatY, strollRoute, perchRoute, perchLost, stepFall, createHealthClock } = require('./desktop-life.cjs');
 const execFile=require('node:util').promisify(require('node:child_process').execFile);
 
 const root = path.resolve(__dirname, '../..');
@@ -30,14 +30,14 @@ const ambientCheck = process.argv.includes('--ambient-check');
 const pointCheck = process.argv.includes('--point-check');
 const edgeCheck = process.argv.includes('--edge-check');
 const smoke = process.argv.includes('--smoke-test') || appearanceTest || animationCheck || conversationCheck || emotionCheck || ambientCheck || pointCheck || edgeCheck;
-let win, base, cookie, closing = false, allowClose = false, clickThrough = false;
+let win, base, cookie, closing = false, allowClose = false, clickThrough = false, pointerIgnored=false;
 let toggleAvailable = false, focusAvailable = false, quickWasClickThrough = null;
-let dragStart;
+let dragStart, quickLift=null;
 let panelOpen=false, roamRoute=null, layoutKey='';
 let pointRoute=null,pointPicker,pointSelecting=false,petScale=1;
 let facing=-1,hoverFacing=null,inertiaTimer=null,dragSamples=[],motionGeneration=0;
 let gameLifecycle, gameTimer, activitySensor, screenCapture, activityHeartbeat = 0;
-let edge=null,edgePeek=false,tucked=false,edgeOut={hover:false,talk:false,quick:false},peekTimer,slideTimer,tray,quietState={focusUntil:0,quietUntil:0,visionPausedUntil:0};
+let edge=null,edgeX=null,tucked=false,slideTimer=null,slideTarget=null,desktopMotionAllowed=true,tray,quietState={focusUntil:0,quietUntil:0,visionPausedUntil:0};
 // The sampler runs for the desktop behaviours; only ambient chat forwards its coarse app label to the service.
 let lastSampleWindow=null,ambientWanted=false,forwarded=false,lastForwardAt=0,lastWindow=null,perch=null,perchPending=null;
 let hiddenForFullscreen=false,fullscreenOverride=null,desktopPrefs={stroll:false,fullscreenHide:true};
@@ -75,6 +75,7 @@ function startInertia(velocity){
 }
 // Falling shares the inertia timer, so drags and other motions cancel it the same way.
 function fall(){
+  if(edge)return;
   stopRoam();stopPoint();stopInertia();clearEdge();perch=null;
   const size=win.getBounds(),area=screen.getDisplayMatching(size).workArea,floor=floorY(area,size.height,petScale);
   if(size.y>=floor-2)return;
@@ -88,6 +89,7 @@ function fall(){
   },16);
 }
 async function perchOnWindow(){
+  if(edge){win.webContents.send('companion-dock-locked');return;}
   if(pointSelecting||panelOpen||dragStart)return;
   const state=await request('/game-companion/state');
   if(!state.scheduler.paused||state.scheduler.active)return;
@@ -112,66 +114,97 @@ function desktopSense(sample){
   const reminder=health.sample(sample);
   if(reminder)win.webContents.send('companion-health',reminder);
 }
-// Dropped near an outer screen edge, she holds on there; with peeking on she tucks half away until hovered.
+// Docked characters stay half hidden until a real drag releases them.
 function clearEdge(){
-  clearTimeout(peekTimer);clearInterval(slideTimer);slideTimer=null;
-  if(edge&&!win.isDestroyed()){win.webContents.send('companion-edge','');win.webContents.send('companion-peek','0');}
-  edge=null;tucked=false;
+  stopEdgeMotion();
+  if(edge&&!win.isDestroyed()){
+    const bounds=win.getBounds();
+    setWindowBounds({...bounds,x:Math.round(edgeX),width:edge.baseWidth});
+    win.webContents.send('companion-edge','');win.webContents.send('companion-peek','0');
+  }
+  edge=null;edgeX=null;tucked=false;
 }
-// The renderer clips whatever lies past the edge, so a shared edge between monitors works like an outer one.
+function setPointerPassthrough(value){
+  if(pointerIgnored===value)return;
+  win.setIgnoreMouseEvents(value,{forward:true});pointerIgnored=value;
+}
+function setWindowBounds(bounds){
+  const restore=pointerIgnored;setPointerPassthrough(false);
+  try{win.setBounds(bounds);}finally{setPointerPassthrough(restore);}
+}
+function stopEdgeMotion(){
+  clearInterval(slideTimer);slideTimer=null;slideTarget=null;
+}
+// The carrier stays inside the work area. Only the character anchor crosses its edge.
 function sendEdge(){
   if(!edge)return;
-  const b=win.getBounds(),cut=edge.side<0?edge.line-b.x:b.x+b.width-edge.line;
-  win.webContents.send('companion-edge',edge.side+','+Math.max(0,Math.round(cut)));
+  const bounds=win.getBounds(),area=screen.getDisplayMatching(bounds).workArea;
+  const anchor=edgeX+edge.baseWidth/2-bounds.x;
+  const bottom=Math.max(7,bounds.y+bounds.height-area.y-area.height+7);
+  win.webContents.send('companion-edge',`${edge.side},${anchor},${bottom}`);
 }
 function slideTo(x){
-  clearInterval(slideTimer);const from=win.getBounds().x,start=performance.now();
+  if(slideTimer!==null&&slideTarget===x)return;
+  clearInterval(slideTimer);slideTimer=null;slideTarget=null;
+  const from=edgeX,start=performance.now(),current=edge;
+  if(from===x){sendEdge();return;}
+  const duration=Math.min(240,Math.max(120,Math.abs(x-from)*.7));
+  slideTarget=x;
   slideTimer=setInterval(()=>{
-    const t=Math.min(1,(performance.now()-start)/180);
-    if(!edge||win.isDestroyed()){clearInterval(slideTimer);slideTimer=null;return;}
-    win.setPosition(Math.round(from+(x-from)*t),edge.y);sendEdge();
-    if(t===1){clearInterval(slideTimer);slideTimer=null;}
+    if(edge!==current||win.isDestroyed()){stopEdgeMotion();return;}
+    const t=Math.min(1,(performance.now()-start)/duration),eased=1-(1-t)**3;
+    edgeX=t===1?x:from+(x-from)*eased;
+    sendEdge();
+    if(t===1){clearInterval(slideTimer);slideTimer=null;slideTarget=null;}
   },16);
 }
-// One place decides where she sits on the edge: stepped out to talk, holding the edge, or tucked half away.
-function edgeTarget(){
-  if(edgeOut.talk||edgeOut.quick)return edge.outX;
-  if(edgeOut.hover||!(edgePeek||edge.manual))return edge.snapX;
-  return edge.peekX;
+function placeEdge(){
+  if(!edge||dragStart||panelOpen||!desktopMotionAllowed)return;
+  if(!tucked){tucked=true;win.webContents.send('companion-peek','1');}
+  slideTo(edge.peekX);
 }
-function placeEdge(delay=2500){
-  clearTimeout(peekTimer);
-  if(!edge||dragStart||panelOpen)return;
-  const x=edgeTarget();
-  if(x===edge.peekX){
-    if(!tucked)peekTimer=setTimeout(()=>{
-      if(edge&&!win.isDestroyed()&&!dragStart&&!panelOpen&&edgeTarget()===edge.peekX){tucked=true;win.webContents.send('companion-peek','1');slideTo(edge.peekX);}
-    },delay);
-    return;
-  }
-  if(tucked){tucked=false;win.webContents.send('companion-peek','0');}
-  slideTo(x);
+function allowDesktopMotion(value){
+  const changed=desktopMotionAllowed!==value;
+  desktopMotionAllowed=value;
+  if(!value)stopEdgeMotion();
+  else if(changed)placeEdge();
 }
 // Tray shortcut: slip to the nearer side of this screen and peek in right away.
 function hideAtEdge(){
-  if(panelOpen||dragStart||pointSelecting)return;
+  if(edge)return;
+  if(panelOpen||dragStart||pointSelecting||!desktopMotionAllowed)return;
   stopInertia();stopPoint();stopRoam();clearEdge();perch=null;
   const bounds=win.getBounds();
-  edge=edgeSnap(bounds,screen.getDisplayMatching(bounds).workArea,petScale,Infinity);
-  edge.manual=true;setFacing(-edge.side);placeEdge(0);
+  attachEdge(bounds,Infinity);
+}
+function attachEdge(bounds,reach=48){
+  const area=screen.getDisplayMatching(bounds).workArea;
+  const next=edgeSnap(bounds,area,petScale,reach);
+  if(!next)return;
+  edge={...next,baseWidth:bounds.width};edgeX=bounds.x;
+  setWindowBounds({...bounds,x:area.x,width:area.width});
+  sendEdge();setFacing(-edge.side);placeEdge();
 }
 function snapToEdge(){
-  if(smoke||panelOpen||dragStart)return;
+  if(edge)return;
+  if((smoke&&!edgeCheck)||panelOpen||dragStart||!desktopMotionAllowed)return;
   const bounds=win.getBounds();
-  edge=edgeSnap(bounds,screen.getDisplayMatching(bounds).workArea,petScale);
-  if(!edge)return;
-  win.setPosition(edge.snapX,edge.y);sendEdge();setFacing(-edge.side);placeEdge();
+  attachEdge(bounds);
+}
+function refreshDock(){
+  if(!edge||win.isDestroyed())return;
+  const bounds=win.getBounds(),area=screen.getDisplayMatching(bounds).workArea,baseWidth=edge.baseWidth,side=edge.side;
+  stopEdgeMotion();edgeX=(side<0?area.x:area.x+area.width)-baseWidth/2;
+  edge={...edgeSnap({...bounds,x:edgeX,width:baseWidth},area,petScale,Infinity),baseWidth};
+  setWindowBounds({...bounds,x:area.x,width:area.width,y:Math.max(area.y,Math.min(bounds.y,area.y+area.height-bounds.height))});
+  sendEdge();
 }
 function stopPoint(){
   pointPicker?.cancel();perchPending=null;
   if(pointRoute){pointRoute=null;win.webContents.send('companion-point-stop');}
 }
 async function pickPoint(){
+  if(edge){win.webContents.send('companion-dock-locked');return;}
   if(pointSelecting)return;
   pointSelecting=true;
   try{
@@ -189,19 +222,43 @@ async function pickPoint(){
 }
 
 function setLayout(expanded,scale=1) {
+  if(edge&&expanded)return;
   // Quick chat toggles body classes too; that must not pull her off the edge.
   // Class changes that leave the layout as it was (quick chat, peeking) must not cancel a run or a walk.
   const key=expanded+','+scale;if(key===layoutKey)return;layoutKey=key;
-  const keepEdge=edge&&!expanded&&!panelOpen&&scale===petScale;
+  const keepEdge=edge&&!expanded&&!panelOpen;
+  const centre=keepEdge?edgeX+edge.baseWidth/2:null;
+  quickLift=null;
   panelOpen=expanded;petScale=scale;stopInertia();stopPoint();stopRoam();
-  if(keepEdge)return;
-  clearEdge();perch=null;
+  if(keepEdge)stopEdgeMotion();else clearEdge();
+  perch=null;
   const area=screen.getDisplayMatching(win.getBounds()).workArea;
   const old=win.getBounds(),compactWidth=Math.max(300,Math.round(300*scale)),compactHeight=Math.round(202*scale+250+compactFooter(scale));
-  const width=expanded?410:compactWidth,height=expanded?Math.min(720,area.height-40):compactHeight;
+  const width=keepEdge?area.width:expanded?410:compactWidth,height=expanded?Math.min(720,area.height-40):compactHeight;
   win.setMinimumSize(expanded?350:compactWidth,expanded?520:compactHeight);
-  win.setBounds({x:Math.max(area.x,Math.min(old.x+old.width-width,area.x+area.width-width)),
+  setWindowBounds({x:keepEdge?area.x:Math.max(area.x,Math.min(old.x+old.width-width,area.x+area.width-width)),
     y:Math.max(area.y,Math.min(old.y,area.y+area.height-height)),width,height});
+  if(keepEdge){
+    edgeX=centre-compactWidth/2;
+    edge={...edgeSnap({...win.getBounds(),x:edgeX,width:compactWidth},area,scale,Infinity),baseWidth:compactWidth};
+    sendEdge();placeEdge();
+  }
+}
+
+function placeQuickChat(open){
+  if(edge){sendEdge();return;}
+  const bounds=win.getBounds();
+  if(open){
+    const y=quickChatY(bounds,screen.getDisplayMatching(bounds).workArea);
+    if(y!==bounds.y){quickLift={y:bounds.y,lifted:y};win.setPosition(bounds.x,y);}
+  }else if(quickLift){
+    if(bounds.y===quickLift.lifted)win.setPosition(bounds.x,quickLift.y);
+    quickLift=null;
+  }
+}
+function hoverQuickChat(value){
+  setPointerPassthrough(!value);
+  placeQuickChat(value||quickWasClickThrough!==null);
 }
 
 async function request(route, body, timeoutMs=8000) {
@@ -235,7 +292,7 @@ function setClickThrough(value) {
   if (value && !toggleAvailable) return nativeState();
   clickThrough = value;
   stopInertia();stopPoint();
-  win.setIgnoreMouseEvents(value, { forward: true });
+  setPointerPassthrough(value);
   win.setFocusable(!value);
   if (value) win.blur();
   win.webContents.send('companion-window-state', nativeState());
@@ -268,7 +325,7 @@ function loginItem(){
   const pwsh=config.pwshExe||path.join(process.env.ProgramFiles??'C:\\Program Files','PowerShell/7/pwsh.exe');
   return {path:pwsh,args:['-NoProfile','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',path.join(root,'tools/start-whale-companion.ps1'),'-DesktopOnly']};
 }
-function focusChat(){setClickThrough(false);win.show();win.setAlwaysOnTop(true,'screen-saver');win.focus();win.webContents.send('companion-focus-chat');}
+function focusChat(){setClickThrough(false);win.show();win.setAlwaysOnTop(true,'screen-saver');win.focus();win.webContents.send(edge?'companion-focus-quick':'companion-focus-chat');}
 function buildTray(){
   if(smoke||win.isDestroyed())return;
   if(!tray){
@@ -290,7 +347,6 @@ function buildTray(){
     {label:quietState.focusUntil>time?'结束专注':'专注 25 分钟',click:send('focus')},
     {label:quietState.quietUntil>time?'取消免打扰':'免打扰 1 小时',click:send('quiet')},
     {label:quietState.visionPausedUntil>time?'现在可以看屏幕了':'一小时内别看屏幕',click:send('vision-pause')},
-    {label:'贴边时藏起一半',type:'checkbox',checked:edgePeek,click:send('edge-peek')},
     {type:'separator'},
     {label:'开机时叫醒她',type:'checkbox',checked:Boolean(login?.openAtLogin),enabled:Boolean(login),
       click:item=>{app.setLoginItemSettings({...loginItem(),openAtLogin:item.checked});buildTray();}},
@@ -317,6 +373,7 @@ async function start() {
   // Older builds kept frames on disk; frames now live only in memory.
   await rm(path.join(output,'screen-cache'),{recursive:true,force:true});
   screenCapture = createScreenCapture({onCapture:()=>{if(win&&!win.isDestroyed())win.webContents.send('companion-vision-capture');},
+    isAllowed:()=>ambientWanted&&Date.now()-activityHeartbeat<=20000&&Date.now()>=quietState.visionPausedUntil,
     getSources:options=>desktopCapturer.getSources(options),inspect:inspectActivity,
     upload:body=>request('/game-companion/vision',body,18000)});
   let lastActivityApp,lastActivityWindow,activityContext=0;
@@ -349,6 +406,9 @@ async function start() {
     title: '鲸鱼合作搭子', webPreferences: { preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true, sandbox: true, nodeIntegration: false, partition: 'persist:companion-overlay' } });
   win.setMenu(null);
+  setPointerPassthrough(true);
+  screen.on('display-metrics-changed',refreshDock);
+  screen.on('display-removed',refreshDock);
   if (!smoke) { activitySensor.setEnabled(true); setInterval(() => activitySensor.setEnabled(true), 60000).unref(); }
   pointPicker=createPointPicker({BrowserWindow,ipcMain,screen});
   gameLifecycle=createGameLifecycle({
@@ -385,17 +445,20 @@ async function start() {
     if(win.isDestroyed())return;
     if (event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) throw new Error('Unknown window');
     if (action === 'state') return nativeState();
-    if (action === 'quick-hover') { win.setIgnoreMouseEvents(value!==true,{forward:true}); edgeOut.hover=value===true;placeEdge(); return; }
+    if (action === 'quick-hover') {hoverQuickChat(value===true);return;}
     if (action === 'quick-focus') {
       if(quickWasClickThrough===null)quickWasClickThrough=clickThrough;
       stopRoam();stopInertia();setClickThrough(false);
-      edgeOut.quick=true;placeEdge();
+      placeQuickChat(true);
       win.show();win.focus();return;
     }
     if (action === 'quick-release') {
+      const hadFocus=quickWasClickThrough!==null;
       if(quickWasClickThrough!==null){setClickThrough(quickWasClickThrough);quickWasClickThrough=null;}
-      edgeOut.quick=false;placeEdge();
-      win.blur();win.setIgnoreMouseEvents(true,{forward:true});return;
+      placeQuickChat(false);
+      if(hadFocus)win.blur();
+      // Hover already owns passthrough; focused input restored its saved state above.
+      return;
     }
     if (action === 'activity') {
       activityHeartbeat = Date.now();
@@ -410,11 +473,13 @@ async function start() {
     if (action === 'fall') {if(!pointRoute&&!dragStart&&!panelOpen)fall();return;
     }
     if (action === 'point-pick') return pickPoint();
-    if (action === 'edge-peek') {edgePeek=value===true;placeEdge();buildTray();return;}
-    if (action === 'edge-talk') {edgeOut.talk=value===true;placeEdge();return;}
+    if (action === 'motion-state') {allowDesktopMotion(value===true);return;}
     if (action === 'quiet-state') {
       if(!value||![value.focusUntil,value.quietUntil,value.visionPausedUntil].every(Number.isFinite))throw new Error('Invalid quiet state');
-      quietState={focusUntil:value.focusUntil,quietUntil:value.quietUntil,visionPausedUntil:value.visionPausedUntil};buildTray();return;
+      const cancelCapture=value.visionPausedUntil>Date.now()&&value.visionPausedUntil!==quietState.visionPausedUntil;
+      quietState={focusUntil:value.focusUntil,quietUntil:value.quietUntil,visionPausedUntil:value.visionPausedUntil};buildTray();
+      if(cancelCapture)await request('/game-companion/control',{action:'vision-cancel'});
+      return;
     }
     if (action === 'point-step') {
       if(typeof value!=='number'||!Number.isFinite(value)||value<0||value>1)throw Error('Invalid movement progress');
@@ -461,7 +526,7 @@ async function start() {
     if (action === 'hover') {
       if(value===true)hoverFacing=facing;
       else {if(hoverFacing!==null&&!roamRoute&&!pointRoute&&!inertiaTimer)setFacing(hoverFacing);hoverFacing=null;}
-      if(!clickThrough)win.setIgnoreMouseEvents(value!==true,{forward:true});return;
+      if(!clickThrough)setPointerPassthrough(value!==true);return;
     }
     if (action === 'look') {
       if(hoverFacing!==null&&!roamRoute&&!pointRoute&&!dragStart&&!inertiaTimer){
@@ -471,7 +536,9 @@ async function start() {
     }
     if (action === 'motion-stop') {stopInertia();return;}
     if (action === 'drag-start') {
-      stopInertia();stopPoint();stopRoam();clearEdge();perch=null;const cursor=screen.getCursorScreenPoint();
+      quickLift=null;
+      stopInertia();stopPoint();stopRoam();clearEdge();perch=null;
+      const cursor=value&&Number.isFinite(value.x)&&Number.isFinite(value.y)?value:screen.getCursorScreenPoint();
       dragStart={cursor,bounds:win.getBounds()};dragSamples=[{...cursor,t:performance.now()}];return;
     }
     if (action === 'drag-move') {
@@ -514,10 +581,10 @@ async function start() {
     await require('./conversation-check.cjs')({win,output,request});
     allowClose=true;win.close();
   } else if (edgeCheck) {
-    win.setOpacity(0);showWithoutFocus();
+    showWithoutFocus();
     await win.webContents.executeJavaScript('initialState.then(()=>undefined)');
-    await require('./edge-check.cjs')({win,output,hideAtEdge,getEdge:()=>edge,getTucked:()=>tucked,
-      hover:value=>{edgeOut.hover=value;placeEdge();}});
+    await require('./dock-check.cjs')({win,output,hideAtEdge,getEdge:()=>edge,getEdgeX:()=>edgeX,getTucked:()=>tucked,
+      hover:hoverQuickChat,allowDesktopMotion,setLayout,getScale:()=>petScale,clearEdge});
     allowClose=true;win.close();
   } else if (pointCheck) {
     win.setOpacity(0);showWithoutFocus();
@@ -548,6 +615,7 @@ async function start() {
     void pollGame();
     if(process.argv.includes('--desktop-companion'))await checkDesktopLaunch();
     if(process.argv.includes('--bubble-ui-check'))await require('./bubble-ui-check.cjs')({win,output,request});
+    if(process.argv.includes('--visual-review'))await require('./visual-review-check.cjs')({win,output});
     const replyCheck=process.argv.includes('--reply-check');
     if(process.argv.includes('--voice-check')||replyCheck){
       for(let attempt=0;attempt<40;attempt++){

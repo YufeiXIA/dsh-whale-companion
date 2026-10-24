@@ -5,3 +5,7 @@ The character is 大肥鱼, a fan design, not an official DeepSeek one. The maid
 - `portrait.png` is the header portrait, the rice-bowl card from `public/assets/whale-rice-card.png`.
 - `expressions/{think,sleepy,eat,pout}.png` are four expressions of that portrait, made with image generation on 2026-10-24. If one is missing, the panel shows `portrait.png`.
 - `fonts/title.woff2` is ZCOOL KuaiLe and `fonts/quote.woff2` is LXGW WenKai v1.530, both under OFL 1.1 (licences are next to them). They only contain the characters used in `index.html`, so new text needs a fresh subset, or those characters fall back to the system font.
+
+The selected speech bubble uses a pale-blue pearl gradient, ivory highlights and light whale fins. The docked version adds an inward angled pointer.
+
+The panel title prefers the local Windows YouYuan font when installed; no Windows font file is distributed. The bundled title font remains the fallback.

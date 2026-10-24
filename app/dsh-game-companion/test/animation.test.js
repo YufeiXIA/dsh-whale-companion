@@ -205,3 +205,15 @@ test('contextual game props stay out of natural idle but remain manually playabl
     assert.match(video.src,/controller_play/);
   }
 });
+
+test('edge reveal events only change the lean and never insert a full surprise action',()=>{
+  const listener=html.slice(html.indexOf("window.addEventListener('companion-peek'"),html.indexOf('// Messages never move'));
+  const f=fixture();f.animator.edge(-1);const clip=f.video.src,plays=f.plays;
+  let onPeek,lean=false;
+  runInNewContext(listener,{window:{addEventListener:(_name,handler)=>{onPeek=handler;}},petAnimator:f.animator,
+    $:()=>({classList:{toggle:(_name,value)=>{lean=value;},contains:()=>false}})});
+  onPeek({detail:'1'});assert.equal(lean,true);
+  onPeek({detail:'0'});assert.equal(lean,false);
+  assert.equal(f.video.src,clip);assert.equal(f.plays,plays);
+  assert.ok(!f.video.src.includes('shy_surprise'));
+});

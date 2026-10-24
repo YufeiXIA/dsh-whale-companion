@@ -548,6 +548,10 @@ export class CompanionHost {
 
   async control(input) {
     if (this.stopped) throw new Error('Companion host is stopped');
+    if (input.action === 'vision-cancel') {
+      this.cancelVision();
+      return this.status();
+    }
     if (this.changingConversation && input.action !== 'pause') throw new Error('正在切换对话，请稍等。');
     if (input.action === 'ambient-sample') return this.desktopSample(input.sample);
     if (input.action === 'ambient-settings') {
