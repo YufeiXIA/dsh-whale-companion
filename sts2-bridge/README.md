@@ -1,25 +1,21 @@
 # 《杀戮尖塔 2》AI 队友（实验性）
 
-让大肥鱼控制本地合作局里的一个席位。本目录只有对 STS2MCP 的修改补丁。游戏文件需要你自己合法拥有，本仓库不提供。
+让大肥鱼在本地合作局里操控一个角色。这里只有对 STS2MCP 的改动补丁，游戏本体要你自己有。
 
 > [!WARNING]
-> 实验性功能。自动脚本能走通若干房间，但没有证明能提高胜率，也还没完成真人合作验收。请只在单独复制出来的游戏副本和测试存档里使用，不要用在你的 Steam 正式存档上。
+> 还在试验。自动打牌能过几个房间，但不保证打得好，也没和真人完整打过一局。请用复制出来的游戏和测试存档，别动你 Steam 上的正式存档。
 
-## 组成
+## 用到什么
 
-| 部分 | 来源 | 作用 |
-|---|---|---|
-| [Gennadiyev/STS2MCP](https://github.com/Gennadiyev/STS2MCP)，基线提交 `55e064850a68f3b4cde7e5fd525bf9b2dec4e885` | MIT | 读游戏状态、执行动作的模组 |
-| `companion.patch` | 本项目 | 给 STS2MCP 增加带令牌的 `/api/v1/companion` 接口、动作回执和局面证据，以及仅限本机的 HTTP 监听 |
-| [Madlezz/LanSpire](https://github.com/Madlezz/LanSpire) | MIT，未修改 | 本地联机 |
+- [Gennadiyev/STS2MCP](https://github.com/Gennadiyev/STS2MCP)（MIT，基于提交 `55e064850a68f3b4cde7e5fd525bf9b2dec4e885`）：读游戏状态、执行操作的模组。
+- `companion.patch`：给 STS2MCP 加了大肥鱼用的接口（要令牌、只听本机），接口说明在补丁里的 `docs/companion-api.md`。
+- [Madlezz/LanSpire](https://github.com/Madlezz/LanSpire)（MIT，没改）：本地联机。
 
-接口说明在补丁新增的 `docs/companion-api.md` 里。
+## 搭建
 
-## 搭建步骤
+需要 .NET 9 SDK、Git 和《杀戮尖塔 2》。
 
-需要 .NET 9 SDK、Git，以及一份《杀戮尖塔 2》。
-
-1. 在项目根目录下拉取两个模组，并打上补丁：
+1. 在项目根目录下载两个模组，打上补丁：
 
    ```powershell
    git clone https://github.com/Gennadiyev/STS2MCP upstream/STS2MCP
@@ -35,24 +31,24 @@
    dotnet build upstream/LanSpire/LanSpire
    ```
 
-3. 在 `companion.config.json` 里填好 `sts2Game`，然后复制出两个隔离的游戏席位：人类玩家 `human`，以及大肥鱼 `whale`。
+3. 在 `companion.config.json` 里填 `sts2Game`，然后复制出两份游戏，一份给你（`human`），一份给她（`whale`）：
 
    ```powershell
    pwsh .\tools\prepare-companion-test.ps1
    ```
 
-   席位放在 `app/companion-test/`，各有自己的存档目录和桥接端口（15526 / 15527）。原游戏目录不会被修改。
+   两份都放在 `app/companion-test/`，存档分开，原来的游戏目录不动。
 
-4. 启动全部组件：
+4. 全部启动：
 
    ```powershell
    pwsh .\tools\start-whale-companion.ps1
    ```
 
-   在面板里确认鲸鱼玩家，点「绑定鲸鱼角色」，再点「继续合作」。绑定不会自动开始操控。每轮测试默认有预算上限：30 分钟、最多 100 次模型调用。
+   在面板里点「绑定鲸鱼角色」，再点「继续合作」。绑定之后她不会马上开始操作。每轮默认最多 30 分钟、100 次模型调用。
 
-## 安全边界
+## 安全
 
-- 桥接只监听本机，每个请求都要带 `bridge-token.txt` 里的令牌（由 `prepare-companion-profile.ps1` 生成）。
-- 「立即暂停」先关闭动作入口，再取消当前模型任务。已经提交给游戏的动作可能仍会执行，以回执为准。
-- 结果不明的动作不会自动重试。
+- 只接受本机请求，每次都要带 `bridge-token.txt` 里的令牌。
+- 点「立即暂停」会先停止接收新操作，再取消正在想的那一步。已经发给游戏的操作可能还是会执行。
+- 不确定有没有成功的操作，不会自动重试。

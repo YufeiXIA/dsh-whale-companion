@@ -46,7 +46,7 @@ module.exports = async function({ win, output, request }) {
   assert.equal(after.budget.requestCount, before.budget.requestCount);
   assert.equal(await js("localStorage.getItem('companion-voice')"), preference);
   await writeFile(path.join(output, 'emotional-voice-check.json'), JSON.stringify({
-    completed: true, defaultLabel: '龙华', defaultPreferenceUnchanged: true,
+    completed: true, defaultLabel: '她的声音', defaultPreferenceUnchanged: true,
     conversationUnchanged: true, modelRequestsDuringCheck: 0, mutedPlayback: true,
     layout, audio: await js('emotionAuditionCheck'), checkedAt: new Date().toISOString()
   }, null, 2));

@@ -124,7 +124,7 @@ form{padding:8px 14px 14px}#chat{font-size:13px;padding:9px 12px}footer{font-siz
 [hidden]{display:none!important}
 .settings>details>summary{white-space:nowrap;gap:4px;padding:0 2px}.settings>details>summary:after{display:none}
 @media(max-width:380px){.settings>details>summary{gap:2px;padding:0;font-size:11px}.settings>details>summary svg{width:12px;height:12px}}
-@font-face{font-family:WhaleTitle;src:url(/game-companion/art/fonts/title.woff2) format('woff2'),local('STHupo'),local('华文琥珀');font-display:swap}
+@font-face{font-family:WhaleTitle;src:url(/game-companion/art/fonts/title.woff2) format('woff2');font-display:swap}
 @font-face{font-family:WhaleQuote;src:url(/game-companion/art/fonts/quote.woff2) format('woff2'),local('KaiTi'),local('楷体');font-display:swap}
 h1,#character-name{font-family:WhaleTitle,system-ui,"Microsoft YaHei UI",sans-serif;font-weight:400}#messages:empty:before,#character-sheet p{font-family:WhaleQuote,system-ui,"Microsoft YaHei UI",sans-serif}#messages:empty:before{font-size:15px;color:#8796b3}
 #history-settings .settings-popover{max-height:min(330px,calc(100vh - 300px))}
@@ -153,6 +153,24 @@ h1,#character-name{font-family:WhaleTitle,system-ui,"Microsoft YaHei UI",sans-se
 #messages::-webkit-scrollbar{width:6px}#messages::-webkit-scrollbar-thumb{background:transparent;border-radius:3px}#messages:hover::-webkit-scrollbar-thumb{background:#b5c6db}
 .history-note{margin:0 0 10px;text-align:center;font-size:11px;color:var(--muted)}
 @media(max-height:600px){header{height:115px;padding:5px 13px}.eyebrow{font-size:9px;line-height:16px}h1{margin:3px 0 0}.hero-caption{font-size:11px;margin:1px 0 4px}#portrait-card{height:96px}#status-row{margin-bottom:5px}#controls button{width:30px;height:30px;min-height:30px}#messages{padding-top:8px}form{padding:6px 12px 10px}}
+/* Header: round title in warm gold, handwritten tagline, image toggle beside the back button. */
+h1{font-size:31px;letter-spacing:4px;line-height:1.15;background:linear-gradient(180deg,#fffbf2 35%,#f0d396);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 2px 0 #18264599)}
+.hero-caption{font-family:WhaleQuote,system-ui,"Microsoft YaHei UI",sans-serif;font-size:13px;letter-spacing:.5px;color:#dfe7f5}
+.hero-actions{display:flex;align-items:center;gap:8px}
+.portrait-switch{position:static;padding:2px;border-radius:16px}.portrait-switch button{padding:2px 10px;line-height:22px}
+body[data-portrait-mode=animated]:not(.compact) #stage{top:30px;right:22px;width:160px;height:130px}
+body[data-portrait-mode=animated]:not(.compact) :is(#pet,#pet-buffer){bottom:-28px}
+/* The rhythm drawer reads as a row you can open, with the current choice on the right. */
+#ambient-details{margin-top:8px}
+#ambient-details>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 11px;border:1px solid #c9d6ea;border-radius:12px;background:linear-gradient(135deg,#eef4fc,#f8f4ea);color:#3b5486;font-size:12px;font-weight:600;transition:border-color .16s,background .16s}
+#ambient-details>summary::-webkit-details-marker{display:none}
+#ambient-details>summary:hover,#ambient-details[open]>summary{border-color:#9fb6da;background:#e6eefa}
+#ambient-rhythm{font-weight:400;font-size:11px;color:#6b7fa3}#ambient-rhythm:after{content:'›';display:inline-block;margin-left:6px;font-size:14px;line-height:1;transition:transform .16s}
+#ambient-details[open] #ambient-rhythm:after{transform:rotate(90deg)}
+#ambient-details>div{padding:8px 2px 2px}
+/* Tucked at a screen edge she leans into the screen; the main process clips whatever crosses the edge. */
+.compact :is(#pet,#pet-buffer){transform-origin:50% 80%;transition:opacity .18s ease,rotate .35s ease}
+.compact #stage.peeking :is(#pet,#pet-buffer){rotate:var(--peek-lean,0deg)}
 </style>
 
 <div id="stage"><div id="focus-badge" hidden></div><div id="vision-badge" role="status" hidden>👀 瞄了一眼屏幕</div><video id="pet" aria-label="大肥鱼的动态形象" autoplay muted loop playsinline src="/whale-pet/turn/looking_around.webm"></video><button id="pet-hit" aria-label="打开聊天；拖动可移动大肥鱼" title="点我聊天 · 拖动挪窝"></button><div id="speech-bubble" role="status">
@@ -166,14 +184,14 @@ h1,#character-name{font-family:WhaleTitle,system-ui,"Microsoft YaHei UI",sans-se
 <svg class="shell-fin left" viewBox="0 0 30 100" aria-hidden="true"><path d="M28 3Q-7 24 3 86Q20 78 28 50Z" fill="#354c79" stroke="#a3b4d5"/><path d="M23 19Q6 45 8 70" fill="none" stroke="#c3b48b" stroke-opacity=".65"/></svg>
 <svg class="shell-fin right" viewBox="0 0 30 100" aria-hidden="true"><path d="M28 3Q-7 24 3 86Q20 78 28 50Z" fill="#354c79" stroke="#a3b4d5"/><path d="M23 19Q6 45 8 70" fill="none" stroke="#c3b48b" stroke-opacity=".65"/></svg>
 
-<header><div class="eyebrow">口袋鲸鱼 · 白饭守护者</div><h1>大肥鱼</h1><p class="hero-caption">吃饱咯🍚我们再开一局🐋~</p><button id="hide-panel" title="收起聊天，只留下大肥鱼" aria-label="收起聊天，回到桌宠"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H4a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-4M21 3l-9 9m0-7v7h7"/></svg><span>回到桌宠</span></button><button id="portrait-card" title="翻开大肥鱼的人物小卡" aria-label="查看大肥鱼的人物小卡"><img id="card-art" alt="抱着白饭碗的鲸鱼娘" src="/game-companion/art/portrait.png"></button><div class="portrait-switch" role="group" aria-label="页首形象"><button id="portrait-static" aria-pressed="true">插画</button><button id="portrait-animated" aria-pressed="false">动态</button></div></header>
+<header><div class="eyebrow">口袋鲸鱼 · 白饭守护者</div><h1>大肥鱼</h1><p class="hero-caption">吃饱咯🍚我们再开一局🐋~</p><div class="hero-actions"><button id="hide-panel" title="收起聊天，只留下大肥鱼" aria-label="收起聊天，回到桌宠"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H4a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-4M21 3l-9 9m0-7v7h7"/></svg><span>回到桌宠</span></button><div class="portrait-switch" role="group" aria-label="页首形象"><button id="portrait-static" aria-pressed="true">插画</button><button id="portrait-animated" aria-pressed="false">动态</button></div></div><button id="portrait-card" title="翻开大肥鱼的人物小卡" aria-label="查看大肥鱼的人物小卡"><img id="card-art" alt="抱着白饭碗的鲸鱼娘" src="/game-companion/art/portrait.png"></button></header>
 <section class="belly" aria-label="陪伴与聊天">
 <div id="status-row"><span id="status">正在连接…</span><div id="controls"><button id="resume" title="继续合作" aria-label="继续合作"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="solid" d="M8 5.5v13l10.5-6.5z"/></svg></button><button id="pause" title="立即暂停" aria-label="立即暂停"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6v12M15 6v12"/></svg></button><button id="voice" title="语音开关"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path class="voice-on" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/><path class="voice-off" d="m16 9.5 5 5m0-5-5 5"/></svg><span id="voice-label" class="sr-only">开启语音</span></button></div></div>
 <div id="error" role="alert"></div><div id="voice-status"></div>
 <div class="settings">
 <details id="history-settings" name="settings"><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v10H9l-4 4z"/></svg>对话</summary><div class="settings-popover"><div id="conversation-bar"><select id="conversation-list" aria-label="切换聊天记录" title="切换聊天记录"></select><button id="new-conversation" title="保留这段聊天，开始独立的新对话"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>新对话</button></div><div id="history-actions"><button id="rename-conversation">改名</button><button id="export-conversation">导出</button><button id="delete-conversation">删除</button></div><div id="rename-form" hidden><input id="conversation-title" maxlength="40" aria-label="对话名字" placeholder="给这段对话起个名字"><button id="rename-save">好</button></div><div id="memory-section"><span>她记住了什么</span><ul id="memory-list"></ul><small>聊天里说「记住：……」或「忘记……」也行。删掉的只是记忆，聊天原文还在。</small></div></div></details>
-<details id="companion-settings" name="settings"><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-9.6A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.4C19 15.6 12 20 12 20z"/></svg>陪伴</summary><div class="settings-popover"><label id="size-setting" for="pet-size" title="只影响收起后的桌宠">桌宠大小 <input id="pet-size" type="range" min="60" max="160" step="5" value="100"><output id="pet-size-value" for="pet-size">100%</output></label><div id="ambient-options"><label><input id="ambient-enabled" type="checkbox"> 偶尔找我聊聊</label><details id="ambient-details"><summary>陪伴节奏</summary><div><select id="ambient-frequency" aria-label="主动搭话频率"><option value="15,30">安静 · 15～30分钟</option><option value="5,10">自然 · 5～10分钟</option><option value="2,5">活泼 · 2～5分钟</option><option value="custom">自己选个区间</option></select><span id="ambient-custom" hidden><input id="ambient-min" type="number" min="2" max="60" value="5" aria-label="最短搭话间隔"> ～ <input id="ambient-max" type="number" min="2" max="60" value="10" aria-label="最长搭话间隔"> 分钟 <button id="ambient-apply">设好啦</button></span></div><small>有合适的话题才开口，不会到点催你。</small></details></div><div id="vision-options"><label><input id="ambient-vision" type="checkbox"> 偶尔看看当前窗口</label><button id="vision-pause">一小时内别看</button><small>开了才会看 · 至少隔 5 分钟 · 截图只在内存里发给 DeepSeek 识图，不存盘 · 密码、银行、隐身窗口一律不看</small></div><div id="focus-options"><div class="focus-row"><button id="focus-start">🍅 专注 25 分钟</button><button id="quiet-hour">免打扰 1 小时</button></div><small id="focus-status">专注和免打扰时她都安静陪着，不主动搭话。</small><label><input id="edge-peek" type="checkbox"> 拖到屏幕边上时藏起一半</label><label><input id="fullscreen-hide" type="checkbox"> 别的程序全屏时自己躲起来</label></div><div id="health-options"><span>小提醒</span><label><input id="health-water" type="checkbox" title="大约每小时一次"> 喝水</label><label><input id="health-stretch" type="checkbox" title="连续坐了 50 分钟"> 久坐</label><label><input id="health-late" type="checkbox" title="凌晨 1 点后还在用电脑"> 熬夜</label></div></div></details>
-<details id="sound-settings" name="settings"><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4zM15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></svg>声音</summary><div class="settings-popover"><span>龙华 · 默认声音</span><br><small>每次只念一句短的，长文字留在屏幕上。</small><br><label>音量 <input id="volume" type="range" min="0" max="1" step="0.05" value="0.8"></label> <button id="preview-voice">试听龙华</button> <button id="stop-voice">打断语音</button>
+<details id="companion-settings" name="settings"><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-9.6A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.4C19 15.6 12 20 12 20z"/></svg>陪伴</summary><div class="settings-popover"><label id="size-setting" for="pet-size" title="只影响收起后的桌宠">桌宠大小 <input id="pet-size" type="range" min="60" max="160" step="5" value="100"><output id="pet-size-value" for="pet-size">100%</output></label><div id="ambient-options"><label><input id="ambient-enabled" type="checkbox"> 偶尔找我聊聊</label><details id="ambient-details"><summary><span>⏱ 陪伴节奏</span><span id="ambient-rhythm">自然 · 5～10分钟</span></summary><div><select id="ambient-frequency" aria-label="主动搭话频率"><option value="15,30">安静 · 15～30分钟</option><option value="5,10">自然 · 5～10分钟</option><option value="2,5">活泼 · 2～5分钟</option><option value="custom">自己选个区间</option></select><span id="ambient-custom" hidden><input id="ambient-min" type="number" min="2" max="60" value="5" aria-label="最短搭话间隔"> ～ <input id="ambient-max" type="number" min="2" max="60" value="10" aria-label="最长搭话间隔"> 分钟 <button id="ambient-apply">设好啦</button></span></div><small>有合适的话题才开口，不会到点催你。</small></details></div><div id="vision-options"><label><input id="ambient-vision" type="checkbox"> 偶尔看看当前窗口</label><button id="vision-pause">一小时内别看</button><small>开了才会看 · 至少隔 5 分钟 · 截图只在内存里发给 DeepSeek 识图，不存盘 · 密码、银行、隐身窗口一律不看</small></div><div id="focus-options"><div class="focus-row"><button id="focus-start">🍅 专注 25 分钟</button><button id="quiet-hour">免打扰 1 小时</button></div><small id="focus-status">专注和免打扰时她都安静陪着，不主动搭话。</small><label title="把她拖到屏幕左右边缘松手；托盘里也能一键让她躲过去"><input id="edge-peek" type="checkbox"> 拖到屏幕左右边时，躲起半个身子偷看</label><label><input id="fullscreen-hide" type="checkbox"> 别的程序全屏时自己躲起来</label></div><div id="health-options"><span>小提醒</span><label><input id="health-water" type="checkbox" title="大约每小时一次"> 喝水</label><label><input id="health-stretch" type="checkbox" title="连续坐了 50 分钟"> 久坐</label><label><input id="health-late" type="checkbox" title="凌晨 1 点后还在用电脑"> 熬夜</label></div></div></details>
+<details id="sound-settings" name="settings"><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4zM15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></svg>声音</summary><div class="settings-popover"><span>她的声音</span><br><small>每次只念一句短的，长文字留在屏幕上。</small><br><label>音量 <input id="volume" type="range" min="0" max="1" step="0.05" value="0.8"></label> <button id="preview-voice">试听一句</button> <button id="stop-voice">打断语音</button>
 <div class="emotion-previews"><span>换个语气听听</span><small>同一句话，四种心情。</small><div class="emotion-buttons"><button id="preview-gentle">温柔</button><button id="preview-happy">开心</button><button id="preview-tsundere">小傲娇</button><button id="preview-serious">认真</button></div></div></div></details>
 <details id="animation-settings" name="settings"><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z"/></svg>小动作</summary><div class="settings-popover"><div class="desktop-options"><button id="desktop-play" aria-pressed="false">开始桌面陪伴</button><label><input id="free-roam" type="checkbox"> 自由跑动</label><label title="自由跑动时只在屏幕底边走"><input id="stroll" type="checkbox"> 沿着任务栏散步</label><label for="desktop-mode">陪伴方式</label><select id="desktop-mode"><option value="natural">自然陪伴</option><option value="showcase">全部动画展示</option></select><small id="desktop-mode-hint">自然待机、转身和小动作；开启自由跑动后会走动、偶尔靠近鼠标。</small></div><div class="action-library"><input id="action-search" type="search" placeholder="找个动作… 点 ☆ 收藏" aria-label="搜索动作" autocomplete="off"><div id="action-grid"></div><video id="action-preview" muted loop playsinline hidden></video></div><select id="pet-action" hidden aria-hidden="true" tabindex="-1"><optgroup label="通用·赢了好得意"><option value="companion/victory_smug">赢啦，才没有很得意</option><option value="companion/victory_trophy">我的小奖杯</option><option value="companion/victory_fistpump">漂亮，握个拳</option><option value="companion/victory_mvp">最佳搭子勋章</option><option value="companion/new_record">新纪录，收个彩带</option><option value="companion/teammate_praise">这操作，给你点赞</option><option value="companion/tiny_victory">赢你一点点而已</option><option value="companion/knew_it_notes">我早就知道</option></optgroup><optgroup label="通用·输了也陪你"><option value="companion/defeat_slump">输了，蔫一小会儿</option><option value="companion/defeat_rage">气鼓鼓摔手柄</option><option value="companion/defeat_retry">不服，再来</option><option value="companion/mistake_awkward">这波我认</option><option value="companion/clutch_save">呼，极限救回来了</option><option value="companion/teammate_comfort">输了也陪你缓缓</option><option value="companion/flourish_retry">不许笑，重来</option></optgroup><optgroup label="通用·认真秀操作"><option value="companion/combo_focus">连招，认真起来了</option><option value="companion/keyboard_burst">键盘噼里啪啦</option><option value="companion/rhythm_tap">跟着节奏打拍子</option><option value="companion/precision_aim">瞄准，再稳一点</option><option value="companion/racing_turn">方向盘，压个弯</option><option value="companion/ready_go">准备好了，出发</option><option value="companion/setup_pride">别挡着我发挥</option></optgroup><optgroup label="通用·队友与等待"><option value="companion/teammate_cheer">挥旗给你加油</option><option value="companion/teammate_highfive">来，击个掌</option><option value="companion/waiting_hourglass">等匹配的小沙漏</option><option value="companion/loading_bored">加载好慢，抱着等</option><option value="companion/low_battery">电量不多啦</option><option value="companion/loot_choice">战利品，选哪个好</option></optgroup><optgroup label="游戏道具"><option value="companion/controller_play">这把认真了</option><option value="companion/card_strategy">先让我想一想……</option><option value="companion/shield_ready">举好盾，先稳住</option><option value="companion/potion_offer">这瓶药，留着救急</option><option value="companion/map_route">下一站，往哪走？</option><option value="companion/loot_proud">战利品，给你看看</option></optgroup><optgroup label="小表情"><option value="companion/listening_nod">认真听完，点点头</option><option value="companion/bright_idea">我有个主意</option><option value="companion/relieved">呼，松一口气</option></optgroup><optgroup label="待机"><option value="idle/breathing">安静待着</option></optgroup><optgroup label="张望"><option value="turn/looking_around">东张西望</option></optgroup><optgroup label="走动"><option value="moves/floating_steps">飘着踏步</option><option value="moves/crab_walk">螃蟹走路</option><option value="moves/running_trip">跑两步摔一跤</option><option value="moves/target_point_run">冲刺跑</option></optgroup><optgroup label="互动"><option value="clicks/happy_hop">开心跃动</option><option value="clicks/shy_surprise">害羞惊讶</option><option value="clicks/tsundere_pout">傲娇生气</option><option value="clicks/ticklish_giggle">挠痒咯咯笑</option><option value="clicks/cheerful_wave">元气挥手</option><option value="clicks/arrival_wave">挥手打招呼</option></optgroup><optgroup label="拖动"><option value="drag/dragged_in_midair">被拎起来了</option><option value="drag/turn_into_ball">变成球</option></optgroup><optgroup label="日常"><option value="daily/maid_curtsy">女仆屈膝礼仪</option><option value="daily/big_stretch">超大伸懒腰</option><option value="daily/gentle_spin">转个圈</option><option value="daily/sleepy_yawn">哈欠连天</option><option value="daily/quick_nap">打个小盹</option><option value="daily/morning_brushing">晨间刷牙</option><option value="daily/mirror_check">照镜子</option><option value="daily/outfit_color_try_on">试试新配色</option><option value="daily/attentive_listening">侧耳倾听</option></optgroup><optgroup label="认真做事"><option value="work/taking_notes">记个笔记</option><option value="work/coding">写代码</option><option value="work/deep_thought">认真想事情</option></optgroup><optgroup label="小游戏"><option value="games/solving_a_rubiks_cube">专心玩魔方</option><option value="games/playing_with_a_toy_car">蹲下玩玩具汽车</option><option value="games/gaming_rage">玩游戏气急败坏</option><option value="games/water_gun_play">玩水枪</option><option value="games/rocking_horse">骑木马</option><option value="games/kicking_a_shuttlecock">踢毽子</option><option value="games/spinning_a_top">抽陀螺</option><option value="games/playing_gomoku">下五子棋</option><option value="games/playground_swing">荡秋千</option></optgroup><optgroup label="音乐"><option value="music/carefree_humming">悠闲哼歌</option><option value="music/playing_the_violin">小提琴演奏</option><option value="music/elegant_maid_dance">优雅女仆舞</option><option value="music/light_sway_dance">轻快摇摆舞</option><option value="music/cute_otaku_dance">可爱宅舞</option><option value="music/playing_the_flute">吹笛子</option></optgroup><optgroup label="零食"><option value="food/eating_snacks">大口吃零食</option><option value="food/eating_rice">吃白饭</option><option value="food/eating_breakfast">吃早餐</option><option value="food/eating_lunch">吃午餐</option><option value="food/eating_dinner">吃晚餐</option><option value="food/melting_ice_cream">吃冰淇淋融化</option><option value="food/eating_watermelon">吃西瓜</option><option value="food/eating_hotpot">涮火锅</option><option value="food/eating_hairy_crab">吃大闸蟹</option><option value="food/eating_candied_haw">吃糖葫芦</option><option value="food/eating_longevity_noodles">吃长寿面</option></optgroup><optgroup label="节日"><option value="festivals/moon_festival">中秋赏月吃月饼</option><option value="festivals/setting_off_fireworks">放烟花</option><option value="festivals/opening_a_gift">拆礼物</option><option value="festivals/eating_zongzi">吃粽子</option><option value="festivals/eating_tangyuan">吃汤圆</option><option value="festivals/eating_dumplings">吃饺子</option><option value="festivals/eating_qingtuan">吃青团</option><option value="festivals/eating_laba_congee">吃腊八粥</option><option value="festivals/eating_rice_cake">吃年糕</option><option value="festivals/eating_chongyang_cake">吃重阳糕</option><option value="festivals/receiving_a_red_envelope">收红包</option><option value="festivals/lion_dance">舞狮头</option><option value="festivals/writing_the_fu_character">写福字</option><option value="festivals/qixi_needlework">穿针乞巧</option><option value="festivals/decorating_a_christmas_tree">装点圣诞树</option><option value="festivals/halloween_trick_or_treat">讨糖南瓜灯</option><option value="festivals/chongyang_chrysanthemums">插茱萸赏菊</option><option value="festivals/releasing_a_river_lantern">放河灯</option><option value="festivals/cute_little_ghost">萌化小幽灵</option><option value="festivals/releasing_a_sky_lantern">放孔明灯</option></optgroup><optgroup label="四季"><option value="seasonal/building_a_snowman">堆雪人</option><option value="seasonal/cooling_with_a_hand_fan">摇扇纳凉</option><option value="seasonal/buried_in_autumn_leaves">被落叶淹没</option><option value="seasonal/flying_a_kite">放风筝</option></optgroup><optgroup label="魔术"><option value="magic/dove_magic">变鸽子魔术</option><option value="magic/flower_conjuring">凭空生花魔术</option><option value="magic/card_magic">扑克魔术</option></optgroup><optgroup label="玩闹"><option value="fun/inflating_a_balloon">吹气球</option><option value="fun/animal_parade">动物环绕</option><option value="fun/three_ball_juggling">三球抛接</option><option value="fun/butterflies_and_blossoms">头顶开花了</option><option value="fun/petting_a_cat">撸猫</option><option value="fun/jump_and_smash">跳起来拍东西</option><option value="fun/desk_tap">敲敲桌子</option><option value="fun/gravity_squash">压扁扁</option><option value="fun/jump_scare">被吓一跳</option></optgroup><optgroup label="鲸鱼小招"><option value="special/whale_bubbles">吐泡泡</option><option value="special/blue_whale_appears">蓝鲸现世</option><option value="special/whale_tail_slap">尾巴拍拍地</option></optgroup><optgroup label="小剧场"><option value="memes/eating_tokens">吃 Token</option><option value="memes/yeah_what_should_we_eat">是啊，吃什么？</option></optgroup><optgroup label="性格·嘴硬但藏不住"><option value="companion/waiting_denial">才没有等你</option><option value="companion/praise_hidden_joy">夸奖收到了</option><option value="companion/sneaky_glance">偷偷看你一眼</option><option value="companion/casual_closer">想贴近，又装路过</option><option value="companion/rice_share">这口分给你</option></optgroup><optgroup label="性格·慢半拍"><option value="food/caught_snacking">说好只吃一口……</option><option value="daily/startled_awake">我没睡着！</option><option value="companion/snack_stubborn">不用扶，我能行</option><option value="companion/thought_lost">思路突然断了</option><option value="companion/controller_search">找手柄找半天</option><option value="companion/tail_mess">尾巴又捣乱了</option><option value="companion/manual_scroll">认真研究说明书</option><option value="companion/hold_thought">意见先保留</option></optgroup><optgroup label="性格·两个人一起玩"><option value="companion/tense_watch">替你捏把汗</option><option value="companion/water_break">先别急，缓一下</option><option value="companion/second_controller">递来二号手柄</option><option value="companion/replay_tokens">复盘刚才那一下</option><option value="companion/saved_seat">给你留了位置</option><option value="companion/controller_break">手柄先没收了</option><option value="companion/come_reluctantly">我自己会过去</option><option value="companion/one_more_round">再来一局？</option></optgroup><optgroup label="性格·安静陪伴"><option value="companion/tail_nap">抱着尾巴打盹</option><option value="companion/apron_treasures">围裙里找东西</option><option value="companion/headphones_slip">耳机戴歪了</option><option value="companion/waterdrop_catch">接住小水滴</option><option value="companion/closing_ritual">收工小仪式</option><option value="companion/reluctant_pillow">勉强借你靠一下</option><option value="companion/claimed_spot">这块是我的位置</option></optgroup><optgroup label="性格·傲娇小剧场"><option value="companion/approval_nod">我批准了</option><option value="companion/praise_expected">还不快夸我</option><option value="companion/compliment_accepted">这还差不多</option><option value="companion/nerves_denied">才没有紧张</option><option value="companion/care_disguised">只是顺手准备的</option><option value="companion/advice_accepted">不服，但听进去了</option></optgroup></select><div class="action-buttons"><button id="perform-action" hidden>做这个</button><button id="random-action">随便来个</button><button id="feed-rice" title="说好只喂一口">喂一口🍚</button></div><small id="action-count">播完就回来陪你。</small></div></details>
 <details id="technical" name="settings"><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 13 4-4m-6 6-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m2 11a4 4 0 0 0 6 0l4-4a4 4 0 0 0-6-6l-1 1" transform="translate(1 1) scale(.9)"/></svg>连接</summary><div class="settings-popover"><div class="game-exit-options"><button id="exit-whale-game" disabled>退出鲸鱼游戏</button><label><input id="auto-exit-game" type="checkbox"> 我下线，她也下线</label><small id="game-status">只关她那边的游戏，桌宠还在</small></div><button id="mode" aria-pressed="true">游戏专注</button><button id="bind">绑定鲸鱼角色</button><div id="goal"></div><div id="budget"></div><div id="debug-error"></div><button id="new-trial" hidden>开始新一轮测试</button></div></details>
@@ -296,6 +314,9 @@ function createPetAnimator(video, now=Date.now, random=Math.random, onRoam=()=>{
     waiting:['idle/breathing','turn/looking_around','special/whale_bubbles','games/playing_gomoku','daily/big_stretch'],
     playing:['work/taking_notes','work/deep_thought','companion/card_strategy','companion/controller_play']};
   const starts={thinking:'work/deep_thought',playing:'work/taking_notes'};
+  const edgeClips=['companion/sneaky_glance','companion/sneaky_glance','turn/looking_around','daily/attentive_listening','companion/waiting_denial',
+    'companion/listening_nod','companion/casual_closer','companion/tense_watch','companion/praise_hidden_joy','companion/hold_thought',
+    'companion/bright_idea','companion/relieved','idle/breathing','special/whale_bubbles'];
   const touches=['clicks/ticklish_giggle','clicks/shy_surprise','clicks/tsundere_pout','clicks/cheerful_wave'];
   const emotions={happy_hop:'clicks/happy_hop',tsundere_pout:'clicks/tsundere_pout',shy_surprise:'clicks/shy_surprise',taking_notes:'work/taking_notes',
     listening_nod:'companion/listening_nod',bright_idea:'companion/bright_idea',relieved:'companion/relieved',
@@ -305,7 +326,7 @@ function createPetAnimator(video, now=Date.now, random=Math.random, onRoam=()=>{
   const contextOnly=new Set([...generalGames.filter(name=>!naturalGames.includes(name)).map(name=>'companion/'+name),'companion/shield_ready','companion/potion_offer','companion/map_route','companion/loot_proud']);
   const moves=['moves/floating_steps','moves/crab_walk','moves/running_trip'];
   let state,path='',mode='',reaction=null,dragging=false,listening=false,touch=0,talkUntil=0,seen=null;
-  let pointRunning=false,flinging=false,desktop=false,roaming=false,suspended=true,desktopClip=null;
+  let pointRunning=false,flinging=false,peeking=false,edgeSide=0,lastEdge='',desktop=false,roaming=false,suspended=true,desktopClip=null;
   let desktopNext=0,bag=[],catalog=[],lastDesktop='',desktopMode='natural',playToken=0,night=false,calm=false;
   function play(next,loop=true,force=false,ready,seek=0){
     if(next===path&&!force)return;
@@ -343,12 +364,14 @@ function createPetAnimator(video, now=Date.now, random=Math.random, onRoam=()=>{
     if(flinging&&(suspended||!state?.scheduler?.paused||state.scheduler.active)){flinging=false;reaction=null;}
     if(flinging)return;
     const desktopReady=desktop&&!suspended&&state?.scheduler?.paused&&!state.scheduler.active;
-    if(desktopClip&&(!desktopReady||dragging||listening||reaction||time<talkUntil)){
+    if(desktopClip&&(!desktopReady||dragging||edgeSide||listening||reaction||time<talkUntil)){
       desktopClip=null;onRoam(false);mode='';desktopNext=time;
     }
     if(dragging){play('drag/dragged_in_midair');return;}
     if(reaction){play(reaction,false);return;}
     if(listening||time<talkUntil){mode='listening';play('daily/attentive_listening');return;}
+    // On a screen edge she keeps to small clips that read well half hidden, and still faces into the screen.
+    if(edgeSide){if(!edgeClips.includes(path)){lastEdge=choose(edgeClips,lastEdge);play(lastEdge,false);}return;}
     if(desktopReady){
       if(desktopClip)return;
       if(time>=desktopNext&&catalog.length){
@@ -368,7 +391,7 @@ function createPetAnimator(video, now=Date.now, random=Math.random, onRoam=()=>{
     const ended=path;
     if(pointRunning){pointRunning=false;onPoint('complete');react('clicks/arrival_wave');return;}
     if(flinging)return;
-    if(ended==='turn/looking_around'&&desktopMode==='natural')onTurn();
+    if(ended==='turn/looking_around'&&desktopMode==='natural'&&!edgeSide)onTurn();
     path='';
     if(desktopClip){
       desktopClip=null;onRoam(false);
@@ -407,6 +430,8 @@ function createPetAnimator(video, now=Date.now, random=Math.random, onRoam=()=>{
       play('moves/target_point_run',false,true,()=>onPoint('start'));return true;
     },
     cancelPoint(){cancelPoint();mode='';render();},
+    peek(value,quiet=false){if(peeking===value)return;peeking=value;if(!value&&!dragging&&!quiet)react('clicks/shy_surprise');else render();},
+    edge(side){if(edgeSide===side)return;edgeSide=side;mode='';render();},
     roamBlocked(){desktopClip=null;onRoam(false);react('turn/looking_around');},
     desktop(enabled,paths,walk,style='natural'){
       cancelPoint();flinging=false;desktop=enabled;catalog=paths;roaming=walk;desktopMode=style;
@@ -465,6 +490,32 @@ window.addEventListener('companion-pick-point',()=>{
 });
 window.addEventListener('companion-point-run',()=>{if(!petAnimator.pointRun())window.dispatchEvent(new CustomEvent('companion-point-motion',{detail:'cancel'}));});
 window.addEventListener('companion-point-stop',()=>petAnimator.cancelPoint());
+// Edge detail is "side,cut": the part of the window beyond the screen edge is clipped away.
+let edgeCut={side:0,cut:0};
+window.addEventListener('companion-edge',event=>{
+  const [side=0,cut=0]=String(event.detail||'').split(',').filter(Boolean).map(Number);
+  edgeCut={side,cut};
+  document.body.style.clipPath=side?(side<0?`inset(0 0 0 ${cut}px)`:`inset(0 ${cut}px 0 0)`):'';
+  $('stage').style.setProperty('--peek-lean',side?(side<0?'7deg':'-7deg'):'0deg');
+  petAnimator.edge(side);fitEdgeUi();
+});
+window.addEventListener('companion-peek',event=>{
+  const peeking=event.detail==='1';$('stage').classList.toggle('peeking',peeking);
+  petAnimator.peek(peeking,$('speech-bubble').classList.contains('visible'));
+});
+// Speech and quick chat stay inside the part of the window that is still on screen.
+function fitEdgeUi(){
+  const {side,cut}=edgeCut,width=document.body.clientWidth,room=width-cut-16,centre=side<0?cut+(width-cut)/2:(width-cut)/2;
+  const bubble=$('speech-bubble').style,quick=$('quick-chat').style;
+  bubble.left=quick.left=side?centre+'px':'';
+  bubble.maxWidth=side?Math.min(320,room)+'px':'';bubble.minWidth=side?Math.min(218,room)+'px':'';
+  quick.width=side?Math.min(330,room)+'px':'';
+}
+// While she sits on an edge, talking brings her fully on screen; she goes back once the bubble fades.
+function setBubbleVisible(visible){
+  $('speech-bubble').classList.toggle('visible',visible);
+  window.dispatchEvent(new CustomEvent('companion-edge-talk',{detail:visible?'1':'0'}));
+}
 window.addEventListener('companion-point-error',()=>showBubble('这次没选好位置，再右键点我试一下。'));
 // Focus and quiet time only silence her own chatter; replies to the user still come through.
 let focusUntil=Number(readSetting('companion-focus-until',0))||0,quietUntil=Number(readSetting('companion-quiet-until',0))||0,quietKey='';
@@ -589,14 +640,13 @@ let bubbleTimer, bubbleMessageId=null, bubbleVoiceId=null, bubbleDeadline=0;
 function scheduleBubbleFade() {
   clearTimeout(bubbleTimer);
   if(bubbleVoiceId!==null&&bubbleVoiceId===bubbleMessageId)return;
-  bubbleTimer=setTimeout(()=>$('speech-bubble').classList.remove('visible'),Math.max(0,bubbleDeadline-Date.now()));
+  bubbleTimer=setTimeout(()=>setBubbleVisible(false),Math.max(0,bubbleDeadline-Date.now()));
 }
 function showBubble(text, messageId=null) {
-  const bubble=$('speech-bubble');
   const characters=Array.from(text.replace(/\s+/gu,' ').trim());
   bubbleMessageId=messageId;
   $('bubble-text').textContent=characters.length>120?characters.slice(0,119).join('')+'…':characters.join('');
-  bubble.classList.add('visible');
+  setBubbleVisible(true);
   bubbleDeadline=Date.now()+Math.min(36000,Math.max(12000,4000+Array.from($('bubble-text').textContent).length*260));
   scheduleBubbleFade();
 }
@@ -698,10 +748,12 @@ function render(value) {
     $('ambient-min').value=String(value.ambient?.minMinutes??5);$('ambient-max').value=String(value.ambient?.maxMinutes??10);
   }
   $('ambient-custom').hidden=$('ambient-frequency').value!=='custom';
+  const rhythm={'15,30':'安静','5,10':'自然','2,5':'活泼'}[range]||'自定';
+  $('ambient-rhythm').textContent=ambientEnabled?rhythm+' · '+range.replace(',','～')+' 分钟':'先打开上面的开关';
   window.dispatchEvent(new CustomEvent('companion-activity',{detail:ambientEnabled&&value.scheduler?.paused===true&&!quietActive()}));
   if(state?.sessionId&&value.sessionId!==state.sessionId){
     stopVoice();seenMessages=null;messageKey='';clearTimeout(bubbleTimer);
-    $('speech-bubble').classList.remove('visible');$('chat').value='';
+    setBubbleVisible(false);$('chat').value='';
   }
   if(!value.scheduler?.paused||value.scheduler.active)window.dispatchEvent(new CustomEvent('companion-motion-stop'));
   if(state && !state.scheduler?.paused && value.scheduler?.paused)stopVoice();

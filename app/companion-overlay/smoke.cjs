@@ -24,9 +24,9 @@ module.exports = async function smoke({ win, output, request, nativeState, setCl
     enabled:document.body.classList.contains('compact'),
     panelHidden:getComputedStyle(document.querySelector('.companion-card')).display==='none',
     barHidden:getComputedStyle(document.getElementById('nativebar')).display==='none',
-    noHistoryBubble:document.getElementById('speech-bubble').textContent===''
+    noHistoryBubble:document.getElementById('bubble-text').textContent===''
   })`);
-  assert.ok(Object.values(compact).every(Boolean),'Default must show only the pet, without old speech or controls');
+  assert.ok(Object.values(compact).every(Boolean),'Default must show only the pet, without old speech or controls: '+JSON.stringify(compact));
   const savedSize=await win.webContents.executeJavaScript("Number(document.getElementById('pet-size').value)");
   await win.webContents.executeJavaScript("document.getElementById('pet-size').value='100';document.getElementById('pet-size').dispatchEvent(new Event('input'));");
   await writeFile(path.join(output,'overlay-pet-preview.png'),(await win.webContents.capturePage()).toPNG());

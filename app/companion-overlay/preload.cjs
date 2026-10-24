@@ -29,12 +29,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   void ipcRenderer.invoke('companion-window','quiet-state',{focusUntil:Number(saved('companion-focus-until'))||0,quietUntil:Number(saved('companion-quiet-until'))||0,
     visionPausedUntil:Number(saved('companion-vision-paused-until'))||0});
   window.addEventListener('companion-edge-peek',event=>void ipcRenderer.invoke('companion-window','edge-peek',event.detail===true));
+  window.addEventListener('companion-edge-talk',event=>void ipcRenderer.invoke('companion-window','edge-talk',event.detail==='1'));
   window.addEventListener('companion-quiet-state',event=>{
     const [focusUntil,quietUntil,visionPausedUntil]=String(event.detail).split(',').map(Number);
     void ipcRenderer.invoke('companion-window','quiet-state',{focusUntil,quietUntil,visionPausedUntil});
   });
   ipcRenderer.on('companion-vision-capture',()=>window.dispatchEvent(new CustomEvent('companion-vision-capture')));
-  for(const name of ['fullscreen','health'])ipcRenderer.on('companion-'+name,(_event,value)=>window.dispatchEvent(new CustomEvent('companion-'+name,{detail:value})));
+  for(const name of ['fullscreen','health','edge','peek'])ipcRenderer.on('companion-'+name,(_event,value)=>window.dispatchEvent(new CustomEvent('companion-'+name,{detail:value})));
   for(const name of ['perched','perch-failed'])ipcRenderer.on('companion-'+name,()=>window.dispatchEvent(new CustomEvent('companion-'+name)));
   const desktopPrefs=detail=>{const [stroll,fullscreenHide]=String(detail).split(',');return {stroll:stroll==='1',fullscreenHide:fullscreenHide!=='0'};};
   void ipcRenderer.invoke('companion-window','desktop-prefs',desktopPrefs((saved('companion-stroll')===true?'1':'0')+','+(saved('companion-fullscreen-hide')===false?'0':'1')));
