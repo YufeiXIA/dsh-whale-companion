@@ -29,6 +29,7 @@ export class AmbientCompanion {
     this.current = null;
     this.topics = new Map();
     this.result = null;
+    this.waitingReason = 'starting';
   }
 
   save() {
@@ -38,8 +39,12 @@ export class AmbientCompanion {
   }
 
   status() {
+    let waitingReason = this.waitingReason;
+    if (!this.enabled) waitingReason = 'disabled';
+    else if (!this.fresh()) waitingReason = 'unavailable';
     return { enabled: this.enabled, minMinutes: this.minMinutes, maxMinutes: this.maxMinutes, visionEnabled: this.visionEnabled,
       available: this.fresh(), unanswered: this.unanswered,
+      waitingReason,
       quietUntil: this.nextAt, lastResult: this.result,
       policy: '按所选节奏搭话；看图须你先开启，至少间隔5分钟，截图只在内存里，看完就丢；两次未回应后安静陪伴。' };
   }
@@ -50,7 +55,7 @@ export class AmbientCompanion {
 
   valid(event) {
     return this.fresh() && this.revision === event.revision && this.now() < event.expiresAt &&
-      this.current.idleMs < 120000 && !['companion', 'other'].includes(this.current.app);
+      this.current.idleMs < 120000 && this.current.app !== 'companion';
   }
 
   invalidate() {
@@ -97,17 +102,25 @@ export class AmbientCompanion {
     if (sample.idleMs >= 120000 && current.idleMs < 120000) this.revision++;
     current.idleMs = sample.idleMs;
     if (sample.idleMs >= 300000) current.away = true;
-    if (blocked || ['companion', 'other'].includes(sample.app) || sample.idleMs >= 120000) return null;
-    if (now - current.since < 45000 || now < this.nextAt || now - this.lastUserAt < 60000 || this.unanswered >= 2) return null;
+    this.waitingReason = null;
+    if (blocked) this.waitingReason = 'busy';
+    else if (sample.app === 'companion') this.waitingReason = 'companion';
+    else if (sample.idleMs >= 120000) this.waitingReason = 'away';
+    else if (this.unanswered >= 2) this.waitingReason = 'unanswered';
+    else if (now < this.nextAt) this.waitingReason = 'cooldown';
+    else if (now - this.lastUserAt < 60000) this.waitingReason = 'recent-chat';
+    else if (now - current.since < 45000) this.waitingReason = 'settling';
+    if (this.waitingReason) return null;
     this.attempts = this.attempts.filter(at => now - at < 3600000);
-    if (this.attempts.length >= Math.max(2, Math.floor(60 / this.maxMinutes))) return null;
+    if (this.attempts.length >= Math.max(2, Math.floor(60 / this.maxMinutes))) { this.waitingReason = 'hour-limit'; return null; }
     let kind;
     if (current.away && sample.idleMs < 30000) kind = 'returned';
     else if (!current.offered) kind = 'application';
     else if (!current.longOffered && now - current.since >= 2700000 && ['code', 'documents'].includes(sample.app)) kind = 'long-focus';
-    else return null;
+    else { this.waitingReason = 'no-topic'; return null; }
     const key = `${kind}:${sample.app}`;
-    if (this.topics.has(key) && now - this.topics.get(key) < 1800000) return null;
+    if (this.topics.has(key) && now - this.topics.get(key) < 1800000) { this.waitingReason = 'topic-cooldown'; return null; }
+    this.waitingReason = 'ready';
     const [category, application] = ambientApps[sample.app];
     return { kind, category, application, minutes: Math.floor((now - current.since) / 60000),
       revision: this.revision, expiresAt: now + 30000, key };
@@ -121,6 +134,7 @@ export class AmbientCompanion {
     if (event.kind === 'returned') this.current.away = false;
     if (event.kind === 'long-focus') this.current.longOffered = true;
     this.result = 'thinking';
+    this.waitingReason = 'cooldown';
   }
 
   delivered() {

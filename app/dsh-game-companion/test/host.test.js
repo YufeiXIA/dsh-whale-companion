@@ -80,17 +80,42 @@ test('vision cancellation aborts pending work immediately without changing saved
   for(const changing of [false,true]){
     const controller=new AbortController();
     f.host.pendingVision={ticket:'pending-frame',controller,processing:true};
+    f.host.ambient.result='thinking';
     f.host.changingConversation=changing;
     try{
       const canceled=f.host.control({action:'vision-cancel'});
       assert.equal(controller.signal.aborted,true);
       assert.equal(f.host.pendingVision,null);
+      assert.equal(f.host.ambient.result,'quiet','canceling a pending frame must not leave the UI thinking forever');
       const status=await canceled;
       assert.equal(status.ambient.visionEnabled,settings.visionOptIn);
       assert.deepEqual(f.host.ambient.save(),settings);
     }finally{f.host.changingConversation=false;}
   }
   assert.equal(f.runtime.requests.includes('POST'),false);
+});
+
+test('an unclassified window reaches proactive chat and an unavailable frame does not block the greeting',async t=>{
+  const gate=deferred();t.after(()=>gate.resolve());
+  const f=await fixture(t);let time=Date.now();
+  f.agent.whenIdle=()=>gate.promise;
+  f.host.ambient=new AmbientCompanion({visionOptIn:true},{now:()=>time,random:()=>0});
+  f.host.ambient.nextAt=time;f.host.ambient.lastUserAt=time-60000;
+  let result;
+  for(let i=0;i<6;i++){
+    result=await f.host.desktopSample({available:true,app:'other',idleMs:0,contextKey:1,captureSupported:true});
+    time+=10000;
+  }
+  assert.ok(result.capture?.ticket);
+  assert.deepEqual(await f.host.desktopFrame({ticket:result.capture.ticket,unavailable:true}),{accepted:true,visual:false});
+  for(let i=0;i<100&&!f.calls.some(([kind])=>kind==='followup');i++)await new Promise(resolve=>setTimeout(resolve,5));
+  const sent=f.calls.find(([kind])=>kind==='followup');assert.ok(sent);
+  const prompt=JSON.parse(sent[1].content[0].text);
+  assert.equal(prompt.environment.application,'其他程序');assert.equal(prompt.environment.visual,null);
+  await f.registered.get('companion_say').execute({text:'刚才突然想到你，就想过来聊一句。',spoken:true},{});
+  assert.equal(f.host.messages.at(-1).ambient,true);
+  assert.equal(f.host.ambient.status().lastResult,'said');
+  gate.resolve();await f.host.scheduler.whenIdle();
 });
 
 const identity = { instance_id: 'test-instance', run_id: 'test-run', local_player_id: 'whale' };

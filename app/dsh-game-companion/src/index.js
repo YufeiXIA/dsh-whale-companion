@@ -499,6 +499,7 @@ export class CompanionHost {
   }
 
   cancelVision() {
+    if (this.pendingVision && this.ambient.result === 'thinking') this.ambient.result = 'quiet';
     this.pendingVision?.controller.abort();
     this.pendingVision = null;
   }
