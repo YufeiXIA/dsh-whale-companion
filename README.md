@@ -72,16 +72,41 @@
 - 开启主动陪伴后，阅读或看视频时也会结合当前程序类别、已授权的截图寻找话题。键鼠空闲不会单独让她静音；每次没回复，下次间隔在所选基础上累加 5 分钟，回复后恢复。
 - 久坐、喝水、凌晨还没睡时提醒你，每种都能单独关。
 
-游戏：在《杀戮尖塔 2》本地合作局里操控一个角色，当你的队友，边打边聊。还在试验阶段：自动打牌能过几个房间，还没和真人完整打过一局。配置见 [`sts2-bridge/README.md`](sts2-bridge/README.md)。
+实机桌面演示：
 
 <table>
 <tr>
-<td align="center"><img src="docs/media/sts2-chat.png" width="240" alt="打精英怪时的聊天记录"><br>边打边商量</td>
-<td align="center"><img src="docs/media/sts2-companion.gif" width="300" alt="想牌、举盾、赢了得意"><br>想牌 → 举盾 → 赢了</td>
+<td align="center"><img src="docs/media/desktop-perch-real.gif" width="360" alt="爬上演示窗口并停在顶部"><br>爬上窗口</td>
+<td align="center"><img src="docs/media/desktop-stroll-real.gif" width="360" alt="沿屏幕底部移动"><br>屏幕底部散步（未拍到任务栏本体）</td>
+</tr>
+<tr>
+<td align="center"><img src="docs/media/desktop-edge-real.gif" width="360" alt="停靠真实屏幕右边，半身说话"><br>贴边后保持半身说话</td>
+<td align="center"><img src="docs/media/desktop-fling-real.gif" width="360" alt="甩出后的滑行与翻滚"><br>滑行、翻滚</td>
+</tr>
+<tr>
+<td align="center"><img src="docs/media/desktop-feed-real.gif" width="360" alt="连续喂饭，第三口被抓到"><br>第三口被抓到</td>
+<td align="center"><img src="docs/media/desktop-pat-real.gif" width="360" alt="摸头后的反应"><br>摸摸头</td>
 </tr>
 </table>
 
-上面的图都是用示范对话录的，不是真实聊天记录，也还没有实机对局画面。
+<img src="docs/media/tray-real.png" width="300" alt="实际托盘菜单，包含聊天、停靠、散步和专注选项">
+
+这些是 Windows 原生浮窗的屏幕录制，动作由录制脚本触发，背景使用中性演示窗口。右键指点移动这次未录到完整过程，没有收录。录制说明见 [素材说明](docs/media/README.md)。
+
+游戏：在《杀戮尖塔 2》本地合作局里操控一个角色，当你的队友，边打边聊。还在试验阶段：自动打牌能过几个房间，还没和真人完整打过一局。配置见 [`sts2-bridge/README.md`](sts2-bridge/README.md)。
+
+下面是复制版游戏和独立测试存档中的实战：AI 队友打出「上勾拳」，敌人受到伤害并被施加虚弱，桌宠同时说出这一轮的打算。
+
+<img src="docs/media/sts2-battle-real.gif" width="720" alt="测试合作局中，AI 队友实际出牌，桌宠显示对应战术气泡">
+
+<table>
+<tr>
+<td align="center"><img src="docs/media/sts2-battle-real.png" width="360" alt="测试合作局第二回合的战斗画面"><br>战斗中</td>
+<td align="center"><img src="docs/media/sts2-event-real.png" width="360" alt="古代事件结束后的游戏画面与桌宠气泡"><br>古代事件结束后</td>
+</tr>
+</table>
+
+页首动画和聊天面板使用示范对话；新增实机素材来自隔离测试会话，游戏气泡来自当时的模型回复。没有使用私人聊天记录，录制时主动看屏幕功能保持关闭。
 
 ## 隐私
 

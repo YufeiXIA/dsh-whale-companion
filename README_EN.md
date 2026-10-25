@@ -15,7 +15,7 @@ A whale-maid who lives on your desktop, chats with you, remembers what you tell 
 </tr>
 </table>
 
-The UI is in Chinese. These were recorded with sample chats, not real history or a real match.
+The UI is in Chinese. The previews above use sample chats. Actual desktop and game captures are shown below.
 
 > Non-commercial fan work. The character and animations can't be used commercially. Not affiliated with DeepSeek or Mega Crit.
 
@@ -36,6 +36,40 @@ The code is new, not a fork. It still uses the original plugin's 95 animations, 
 - Experimental *Slay the Spire 2* teammate.
 
 When docked, she stays half-hidden during greetings, replies, clicks and typing. Speech bubbles open diagonally toward the inside of the screen, with the input bar beside the edge. Drag her out to undock. This update also keeps the previous animation visible until its replacement starts, cancels pending screen glances when paused, and refines the title font and header position. See [release notes (Chinese)](docs/fixed-half-dock.md).
+
+## Live captures
+
+These are screen recordings of native Windows overlay windows. A capture script triggers the actions over a neutral demo background.
+
+<table>
+<tr>
+<td align="center"><img src="docs/media/desktop-perch-real.gif" width="360" alt="Climbing onto a demo window"><br>Climbing onto a window</td>
+<td align="center"><img src="docs/media/desktop-stroll-real.gif" width="360" alt="Moving along the bottom of the screen"><br>Bottom-edge stroll (taskbar itself not shown)</td>
+</tr>
+<tr>
+<td align="center"><img src="docs/media/desktop-edge-real.gif" width="360" alt="Half-hidden at the actual right screen edge, speaking inward"><br>Talking while docked</td>
+<td align="center"><img src="docs/media/desktop-fling-real.gif" width="360" alt="Sliding and tumbling after a fling"><br>Sliding and tumbling</td>
+</tr>
+<tr>
+<td align="center"><img src="docs/media/desktop-feed-real.gif" width="360" alt="Getting caught on the third serving"><br>Caught on the third serving</td>
+<td align="center"><img src="docs/media/desktop-pat-real.gif" width="360" alt="Reacting to a head pat"><br>Head pats</td>
+</tr>
+</table>
+
+<img src="docs/media/tray-real.png" width="300" alt="Actual tray menu">
+
+The right-click point-and-run capture did not produce a complete sequence, so it is omitted. See [capture notes](docs/media/README.md).
+
+The following clip is an actual co-op battle in a copied test installation of *Slay the Spire 2*. The AI teammate plays Uppercut, dealing damage and applying Weak while the pet explains the plan. This remains experimental: it can clear several rooms, but has not completed a full run with a human.
+
+<img src="docs/media/sts2-battle-real.gif" width="720" alt="AI teammate playing a card in an actual test battle, with a matching speech bubble">
+
+<table><tr>
+<td align="center"><img src="docs/media/sts2-battle-real.png" width="360" alt="Second turn of the test battle"><br>In battle</td>
+<td align="center"><img src="docs/media/sts2-event-real.png" width="360" alt="After an Ancient event, with the companion speaking"><br>After an Ancient event</td>
+</tr></table>
+
+All new captures use an isolated test conversation; game bubbles are model replies from that session. No private chat history is included, and proactive screen viewing stayed off. Game setup: [sts2-bridge/README.md](sts2-bridge/README.md) (Chinese).
 
 ## Setup
 
