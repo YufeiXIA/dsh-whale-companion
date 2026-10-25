@@ -14,6 +14,25 @@ export const EMOTION_PRESETS = Object.freeze({
   tsundere: Object.freeze({ label: '小傲娇', delivery: '请用俏皮、小傲娇的年轻女声说话。开头藏不住一点开心，说到才没有时轻轻嘴硬，后半句有点不好意思地放软。亲近、不凶、不大喊，不用播报腔。' }),
   serious: Object.freeze({ label: '认真', delivery: '请用认真、沉着的年轻女声说话，咬字清楚，节奏稳当，像认真和熟悉的朋友交代一件小事。自然、温暖，不卖萌，不用报告或新闻播报腔。' })
 });
+// Speaking style per reply emotion; shared with the standalone lite app.
+const EMOTION_DELIVERY = Object.freeze({
+  happy_hop: '轻快、开心，像和熟悉的朋友打游戏。自然说话，不夸张。',
+  tsundere_pout: '轻轻嘴硬，有一点俏皮的傲娇，亲近而不生气。',
+  shy_surprise: '有点惊喜和害羞，语气轻柔自然。',
+  taking_notes: '认真和朋友商量，轻声、自然，不念报告。',
+  listening_nod: '认真接住朋友的话，轻柔、自然地回应。',
+  bright_idea: '想到一个小主意，有一点雀跃和自信，不夸张。',
+  relieved: '紧张之后松了口气，放松、自然，不夸张。',
+  controller_play: '和朋友一起打游戏，专注又轻松，不念操作说明。',
+  card_strategy: '认真商量出牌，有自己的小主意，轻声自然。',
+  shield_ready: '提醒朋友先稳住防守，沉着、简短、亲近。',
+  potion_offer: '关心朋友，随口提醒留着药水，温柔而不说教。',
+  map_route: '和朋友商量下一站，带一点好奇，留出商量的余地。',
+  loot_proud: '拿到奖励有一点小得意，轻轻开心，不夸张。'
+});
+export function emotionDelivery(emotion) {
+  return EMOTION_DELIVERY[emotion] ?? '和熟悉的朋友随口聊天，轻松自然。不要播报腔，不刻意卖萌。';
+}
 
 // Reuse an installed desktop-pet project's Qwen adapter and saved voice selection, found
 // through WHALE_VOICE_ADAPTER_ROOT. Without it the companion stays text-only.
@@ -133,21 +152,7 @@ export class CompanionVoice {
       runtime = preset === null
         ? this.runtime ??= await this.load(authorizer)
         : this.emotionRuntime ??= await this.loadEmotional(authorizer);
-      const delivery = EMOTION_PRESETS[preset]?.delivery ?? {
-        happy_hop: '轻快、开心，像和熟悉的朋友打游戏。自然说话，不夸张。',
-        tsundere_pout: '轻轻嘴硬，有一点俏皮的傲娇，亲近而不生气。',
-          shy_surprise: '有点惊喜和害羞，语气轻柔自然。',
-          taking_notes: '认真和朋友商量，轻声、自然，不念报告。',
-          listening_nod: '认真接住朋友的话，轻柔、自然地回应。',
-          bright_idea: '想到一个小主意，有一点雀跃和自信，不夸张。',
-          relieved: '紧张之后松了口气，放松、自然，不夸张。',
-          controller_play: '和朋友一起打游戏，专注又轻松，不念操作说明。',
-          card_strategy: '认真商量出牌，有自己的小主意，轻声自然。',
-          shield_ready: '提醒朋友先稳住防守，沉着、简短、亲近。',
-          potion_offer: '关心朋友，随口提醒留着药水，温柔而不说教。',
-          map_route: '和朋友商量下一站，带一点好奇，留出商量的余地。',
-          loot_proud: '拿到奖励有一点小得意，轻轻开心，不夸张。'
-        }[message.emotion] ?? '和熟悉的朋友随口聊天，轻松自然。不要播报腔，不刻意卖萌。';
+      const delivery = EMOTION_PRESETS[preset]?.delivery ?? emotionDelivery(message.emotion);
       const result = await runtime.provider.synthesize({ scope, text: message.text,
           expression: { emotion: message.emotion ?? 'neutral', intensity: message.emotion === 'happy_hop' ? 0.5 : 0.3, delivery, gesture: null }
       }, combined);

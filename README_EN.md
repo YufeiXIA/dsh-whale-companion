@@ -19,6 +19,20 @@ The UI is in Chinese. The previews above use sample chats. Actual desktop and ga
 
 > Non-commercial fan work. The character and animations can't be used commercially. Not affiliated with DeepSeek or Mega Crit.
 
+## Two versions
+
+| | Full (this page) | [Lite](lite/README.md) (Chinese docs) |
+|---|---|---|
+| Needs DSH | Yes; models and keys live in DSH | No; paste a key in her settings page |
+| Install | Set paths and a DSH profile (see below) | Installer or portable zip |
+| Chat, memory, conversations, check-ins, screen reading | Yes | Yes |
+| Feeding, edge peek, window perching, focus timers | Yes | Yes |
+| Voice | Not in the public version | Yes, with an Alibaba Bailian key |
+| Slay the Spire 2 teammate | Yes (experimental) | No |
+| Size | Depends on your DSH and Electron | About 500 MB installed |
+
+Pick Lite for a desktop pet you can chat with; pick Full if you want her to play games with you.
+
 ## Credits
 
 Based on [luweiyabo/dsh-whale-pet](https://github.com/luweiyabo/dsh-whale-pet), whose animations mostly come from [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet). The character 大肥鱼 is a fan design: the original "Mingyue" is by bilibili [@上善无形](https://space.bilibili.com/4456176), and the maid version is by bilibili [@ZipZipPipe](https://space.bilibili.com/4168597), under CC BY-NC-SA 4.0.

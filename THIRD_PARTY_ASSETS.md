@@ -21,6 +21,7 @@
 
 - 95 个原版动画由 [luweiyabo/dsh-whale-pet](https://github.com/luweiyabo/dsh-whale-pet) 插件提供，这个仓库里没有。它们大多来自 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet)。
 - `app/dsh-game-companion/public/animations/` 里的 69 个是新做的：拿原版小人当参考图，用图生视频做出来，再抠掉背景。
+- [轻便版](lite/README.md)的安装包里打包了这 95 个原版动画（`lite/pet/`），一起附上原版插件的 LICENSE 和素材说明。
 - 条款：PC2005-cloud/dsh-pet 的素材可以开源使用，不能商用，二创要在公开的地方附上 <https://github.com/PC2005-cloud/dsh-pet>。新做的 69 个也按这个来。
 
 上游条款可能会改，用之前请看一眼 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet#许可) 和 [luweiyabo/dsh-whale-pet](https://github.com/luweiyabo/dsh-whale-pet/blob/main/THIRD_PARTY_ASSETS.md) 的说明。
@@ -43,7 +44,7 @@
 | [luweiyabo/dsh-whale-pet](https://github.com/luweiyabo/dsh-whale-pet) | 提供动画，也是这个项目的起点 | 代码 MIT，素材见上 |
 | [Gennadiyev/STS2MCP](https://github.com/Gennadiyev/STS2MCP) | 读取和操作《杀戮尖塔 2》，`sts2-bridge/companion.patch` 是对它的改动 | MIT，见 `sts2-bridge/STS2MCP-LICENSE` |
 | [Madlezz/LanSpire](https://github.com/Madlezz/LanSpire) | 本地联机，没改 | MIT |
-| [Electron](https://www.electronjs.org/) | 桌面窗口，需要自己下载 | MIT |
+| [Electron](https://www.electronjs.org/) | 桌面窗口；完整版要自己下载，轻便版安装包里自带 | MIT |
 
 ## 仓库里没有的东西
 

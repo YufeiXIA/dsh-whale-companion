@@ -39,7 +39,7 @@ test('panel only voices fresh selected lines, skips busy/old lines and stops on 
   const preferences = new Map();
   const timers = new Map(); let timerId=0, now=Date.now();
   class Clock extends Date { static now(){return now;} }
-  const context = { localStorage: { getItem: key => preferences.get(key), setItem: (key, value) => preferences.set(key, value) }, document: { body: element(), createElement: element,
+  const context = { localStorage: { getItem: key => preferences.get(key), setItem: (key, value) => preferences.set(key, value) }, document: { body: element(), documentElement: { hasAttribute: () => false }, createElement: element,
     getElementById(id) { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); },
     querySelector: () => element() },
     window: { addEventListener() {}, dispatchEvent() {} }, CustomEvent:class { constructor(type,options){this.type=type;Object.assign(this,options);} },

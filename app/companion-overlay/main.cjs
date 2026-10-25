@@ -12,10 +12,12 @@ const { floorY, quickChatY, strollRoute, perchRoute, perchLost, stepFall, create
 const execFile=require('node:util').promisify(require('node:child_process').execFile);
 
 const root = path.resolve(__dirname, '../..');
-const output = path.join(root, 'outputs/companion-runtime');
-const data = path.join(root, 'app/companion-test/overlay-data');
+// Set by lite/main.cjs: the standalone app runs its own host in this process and has no game.
+const lite = global.whaleLite ?? null;
+const output = lite?.output ?? path.join(root, 'outputs/companion-runtime');
+const data = lite?.data ?? path.join(root, 'app/companion-test/overlay-data');
 // Machine-specific paths live in companion.config.json at the project root (see companion.config.example.json).
-const config = (() => { try { return JSON.parse(require('node:fs').readFileSync(path.join(root, 'companion.config.json'), 'utf8')); } catch { return {}; } })();
+const config = lite ? {} : (() => { try { return JSON.parse(require('node:fs').readFileSync(path.join(root, 'companion.config.json'), 'utf8')); } catch { return {}; } })();
 const hostPort = String(config.port || 19388);
 // Same folder as the plugin's dataDir; the plugin writes a fresh session token there on every start.
 const companionData = config.dataDir || path.join(config.dshHome || process.env.DSH_HOME || path.join(require('node:os').homedir(), '.dsh'), 'game-companion');
@@ -322,6 +324,7 @@ async function closeSafely(onPaused) {
 }
 
 function loginItem(){
+  if(lite)return {path:process.execPath,args:app.isPackaged?[]:[app.getAppPath()]};
   // The launcher needs PowerShell 7; Windows PowerShell 5.1 misreads the UTF-8 script.
   const pwsh=config.pwshExe||path.join(process.env.ProgramFiles??'C:\\Program Files','PowerShell/7/pwsh.exe');
   return {path:pwsh,args:['-NoProfile','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',path.join(root,'tools/start-whale-companion.ps1'),'-DesktopOnly']};
@@ -337,6 +340,7 @@ function buildTray(){
   const login=require('node:fs').existsSync(loginItem().path)?app.getLoginItemSettings(loginItem()):null;
   tray.setContextMenu(Menu.buildFromTemplate([
     {label:'打开聊天',click:focusChat},
+    ...(lite?[{label:'模型与语音设置',click:()=>{focusChat();send('settings')();}}]:[]),
     {label:win.isVisible()?'先藏起来':'叫她出来',click:()=>{
       if(win.isVisible())win.hide();
       else{if(hiddenForFullscreen){hiddenForFullscreen=false;fullscreenOverride=lastSampleWindow;win.webContents.send('companion-fullscreen',false);}showWithoutFocus();}
@@ -357,17 +361,25 @@ function buildTray(){
 
 async function start() {
   await mkdir(data, { recursive: true });
-  const log = await readFile(path.join(output, 'host.stdout.log'), 'utf8');
-  const address = log.match(/dsh web: (http:\/\/[^\s]+)/)?.[1];
-  if (!address) throw new Error('请先启动 companion-test DSH 宿主');
-  base = new URL(address);
-  if (base.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(base.hostname) || base.port !== hostPort) {
-    throw new Error(`搭子宿主必须位于本机 ${hostPort} 端口`);
+  await mkdir(output, { recursive: true });
+  let cookies;
+  if (lite) {
+    const host = await lite.ready;
+    base = new URL(host.base);
+    cookies = [`whale_companion=${host.token}`];
+  } else {
+    const log = await readFile(path.join(output, 'host.stdout.log'), 'utf8');
+    const address = log.match(/dsh web: (http:\/\/[^\s]+)/)?.[1];
+    if (!address) throw new Error('请先启动 companion-test DSH 宿主');
+    base = new URL(address);
+    if (base.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(base.hostname) || base.port !== hostPort) {
+      throw new Error(`搭子宿主必须位于本机 ${hostPort} 端口`);
+    }
+    const landing = await fetch(base, { redirect: 'manual', signal: AbortSignal.timeout(8000) });
+    const session = (await readFile(path.join(companionData, 'overlay-session.txt'), 'utf8')).trim();
+    if (!/^[\w-]{43}$/.test(session)) throw new Error('搭子插件还没写出会话令牌，请先在 DSH 里启用它');
+    cookies = [...landing.headers.getSetCookie().map(value => value.split(';')[0]), `whale_companion=${session}`];
   }
-  const landing = await fetch(base, { redirect: 'manual', signal: AbortSignal.timeout(8000) });
-  const session = (await readFile(path.join(companionData, 'overlay-session.txt'), 'utf8')).trim();
-  if (!/^[\w-]{43}$/.test(session)) throw new Error('搭子插件还没写出会话令牌，请先在 DSH 里启用它');
-  const cookies = [...landing.headers.getSetCookie().map(value => value.split(';')[0]), `whale_companion=${session}`];
   cookie = cookies.join('; ');
   base.search = ''; base.hash = '';
   await request('/game-companion/state');
@@ -414,7 +426,8 @@ async function start() {
   screen.on('display-removed',refreshDock);
   if (!smoke) { activitySensor.setEnabled(true); setInterval(() => activitySensor.setEnabled(true), 60000).unref(); }
   pointPicker=createPointPicker({BrowserWindow,ipcMain,screen});
-  gameLifecycle=createGameLifecycle({
+  gameLifecycle=lite?{snapshot:()=>({known:false,humanRunning:false,whaleRunning:false,automatic:false,busy:false,message:''}),
+    setAutomatic(){return this.snapshot();},exitGame:async()=>{throw new Error('No game in the standalone app');},poll:async()=>{}}:createGameLifecycle({
     inspect:()=>gameProcess('Status'),
     stop:async automatic=>{
       const result=await gameProcess('StopWhale',automatic);
@@ -618,7 +631,7 @@ async function start() {
       const game=gameLifecycle.snapshot();
       gameTimer=setTimeout(pollGame,!game.known||game.whaleRunning||game.humanRunning?5000:30000);
     };
-    void pollGame();
+    if(!lite)void pollGame();
     if(process.argv.includes('--desktop-companion'))await checkDesktopLaunch();
     if(process.argv.includes('--bubble-ui-check'))await require('./bubble-ui-check.cjs')({win,output,request});
     if(process.argv.includes('--visual-review'))await require('./visual-review-check.cjs')({win,output});
@@ -655,7 +668,7 @@ else app.whenReady().then(start).catch(async error => {
   console.error(`Companion overlay: ${error.code || 'startup failed'}`);
   if (smoke && error.code === 'ERR_ASSERTION') console.error(error.stack);
   if (!smoke && dialog.showMessageBoxSync({ type: 'warning', title: '大肥鱼没能启动', message: '桌宠启动失败',
-    detail: `最常见的原因是 DSH 里的游戏搭子还没启动。先打开它，再点「重试」。\n\n原因：${error.code || String(error.message).replace(/https?:\/\/\S+/g,'[URL]').slice(0,200)}`,
+    detail: `${lite?'可以点「重试」再试一次。':'最常见的原因是 DSH 里的游戏搭子还没启动。先打开它，再点「重试」。'}\n\n原因：${error.code || String(error.message).replace(/https?:\/\/\S+/g,'[URL]').slice(0,200)}`,
     buttons: ['重试', '退出'], defaultId: 0, cancelId: 1 }) === 0) app.relaunch();
   app.exit(1);
 });

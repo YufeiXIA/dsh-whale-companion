@@ -21,6 +21,20 @@
 > [!IMPORTANT]
 > 这是非商业的同人作品，角色和动画不能商用。和 DeepSeek 官方、Mega Crit（《杀戮尖塔》开发商）都没有关系。
 
+## 两个版本
+
+| | 完整版（本页） | [轻便版](lite/README.md) |
+|---|---|---|
+| 要装 DSH 吗 | 要，模型和 Key 在 DSH 里配 | 不用，在她的设置页里填 Key |
+| 怎么装 | 按下面的「安装」配路径、建 profile | 下载安装包或免安装压缩包，双击就行 |
+| 聊天、记忆、多段对话、主动搭话、看屏幕 | 有 | 有 |
+| 喂饭摸头、贴边、爬窗口、专注提醒 | 有 | 有 |
+| 语音 | 公开版没有 | 有，填阿里百炼的 Key |
+| 《杀戮尖塔 2》队友 | 有（实验性） | 没有 |
+| 占多大 | 看你的 DSH 和 Electron | 安装后约 500 MB |
+
+只想要桌宠和聊天，选轻便版；想让她陪你打游戏，用完整版。
+
 ## 来源
 
 - 起点是 [luweiyabo/dsh-whale-pet](https://github.com/luweiyabo/dsh-whale-pet)：住在 DSH 网页里的鲸鱼娘桌宠，动画大多来自 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet)。
