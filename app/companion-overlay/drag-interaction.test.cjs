@@ -14,8 +14,9 @@ test('a click never starts native dragging; a real drag preserves its pointer-do
   vm.runInNewContext(code,context);
   const down={button:0,screenX:20,screenY:500,pointerId:1};
   listeners.get('pointerdown')(down);listeners.get('pointerup')();
-  assert.equal(calls.length,0,'clicking a docked pet must not clear its dock');
+  assert.equal(calls.some(call=>call[1]==='drag-start'),false,'clicking a docked pet must not clear its dock');
+  calls.length=0;
   listeners.get('pointerdown')(down);listeners.get('pointermove')({screenX:40,screenY:510});listeners.get('pointerup')();
-  assert.deepEqual(calls.map(call=>call[1]),['drag-start','drag-move','drag-end']);
-  assert.equal(calls[0][2].x,20);assert.equal(calls[0][2].y,500);
+  assert.deepEqual(calls.map(call=>call[1]),['drag-prepare','drag-start','drag-move','drag-end']);
+  assert.equal(calls[1][2],undefined,'renderer screen coordinates must not be mixed with native DIP coordinates');
 });

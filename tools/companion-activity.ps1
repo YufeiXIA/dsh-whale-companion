@@ -1,4 +1,4 @@
-param([switch]$Once, [switch]$Diagnostic)
+param([switch]$Once, [switch]$Diagnostic, [switch]$PrimaryWindow, [int]$ExcludeProcessId = 0)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 Add-Type -TypeDefinition @'
@@ -10,6 +10,16 @@ public static class WhaleActivity {
     [StructLayout(LayoutKind.Sequential)] public struct MONITORINFO { public uint cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out int value, int size);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr hwnd, System.Text.StringBuilder name, int length);
+    public delegate bool EnumWindowProc(IntPtr hwnd, IntPtr param);
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowProc callback, IntPtr param);
+    public static IntPtr[] WindowsInOrder() {
+        var windows = new System.Collections.Generic.List<IntPtr>();
+        EnumWindows((hwnd, param) => { windows.Add(hwnd); return true; }, IntPtr.Zero);
+        return windows.ToArray();
+    }
     [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
     [DllImport("user32.dll")] public static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
@@ -30,6 +40,32 @@ do {
     $desktopHandle = [WhaleActivity]::OpenInputDesktop(0, $false, 1)
     try {
         $windowHandle = [WhaleActivity]::GetForegroundWindow()
+        $primaryInfo = [WhaleActivity+MONITORINFO]::new()
+        $primaryInfo.cbSize = [Runtime.InteropServices.Marshal]::SizeOf($primaryInfo)
+        if ($PrimaryWindow) {
+            $windowHandle = [IntPtr]::Zero
+            if ([WhaleActivity]::GetMonitorInfo([WhaleActivity]::MonitorFromWindow([IntPtr]::Zero, 1), [ref]$primaryInfo)) {
+                foreach ($candidate in [WhaleActivity]::WindowsInOrder()) {
+                    if (-not [WhaleActivity]::IsWindowVisible($candidate) -or [WhaleActivity]::IsIconic($candidate)) { continue }
+                    [int]$cloaked = 0
+                    if ([WhaleActivity]::DwmGetWindowAttribute($candidate, 14, [ref]$cloaked, 4) -eq 0 -and $cloaked -ne 0) { continue }
+                    [uint32]$candidateProcessId = 0
+                    [void][WhaleActivity]::GetWindowThreadProcessId($candidate, [ref]$candidateProcessId)
+                    if ($candidateProcessId -eq $ExcludeProcessId) { continue }
+                    $className = [System.Text.StringBuilder]::new(128)
+                    [void][WhaleActivity]::GetClassName($candidate, $className, 128)
+                    if ($className.ToString() -in @('Shell_TrayWnd','Shell_SecondaryTrayWnd','Progman','WorkerW','tooltips_class32')) { continue }
+                    $candidateRect = [WhaleActivity+RECT]::new()
+                    if (-not [WhaleActivity]::GetWindowRect($candidate, [ref]$candidateRect)) { continue }
+                    $primaryRect = $primaryInfo.rcMonitor
+                    if ($candidateRect.Right -le $primaryRect.Left -or $candidateRect.Left -ge $primaryRect.Right -or
+                        $candidateRect.Bottom -le $primaryRect.Top -or $candidateRect.Top -ge $primaryRect.Bottom) { continue }
+                    if ($candidateRect.Right - $candidateRect.Left -lt 100 -or $candidateRect.Bottom - $candidateRect.Top -lt 80) { continue }
+                    $windowHandle = $candidate
+                    break
+                }
+            }
+        }
         $inputInfo = [WhaleActivity+LASTINPUTINFO]::new()
         $inputInfo.cbSize = [Runtime.InteropServices.Marshal]::SizeOf($inputInfo)
         $desktopName = [System.Text.StringBuilder]::new(128)
@@ -67,7 +103,12 @@ do {
                 $rect.Left -eq $monitor.rcMonitor.Left -and $rect.Top -eq $monitor.rcMonitor.Top -and
                 $rect.Right -eq $monitor.rcMonitor.Right -and $rect.Bottom -eq $monitor.rcMonitor.Bottom
             $sample = @{ available = $true; app = $appKind; idleMs = $idleMs; windowId = $windowHandle.ToInt64().ToString(); sensitive = [bool]$sensitive; fullscreen = [bool]$fullscreen }
+            $sample.captureOverlay = $processName -match '^(SnippingTool|ScreenClippingHost|ScreenSketch|SnipAndSketch)$'
             if ($hasRect) { $sample.rect = @{ x = $rect.Left; y = $rect.Top; width = $rect.Right - $rect.Left; height = $rect.Bottom - $rect.Top } }
+            if ($PrimaryWindow) {
+                $primaryRect = $primaryInfo.rcMonitor
+                $sample.screenBounds = @{ x = $primaryRect.Left; y = $primaryRect.Top; width = $primaryRect.Right - $primaryRect.Left; height = $primaryRect.Bottom - $primaryRect.Top }
+            }
         }
     } catch {
         $sample = @{ available = $false }

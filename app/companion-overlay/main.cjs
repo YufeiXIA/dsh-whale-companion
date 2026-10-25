@@ -32,7 +32,7 @@ const edgeCheck = process.argv.includes('--edge-check');
 const smoke = process.argv.includes('--smoke-test') || appearanceTest || animationCheck || conversationCheck || emotionCheck || ambientCheck || pointCheck || edgeCheck;
 let win, base, cookie, closing = false, allowClose = false, clickThrough = false, pointerIgnored=false;
 let toggleAvailable = false, focusAvailable = false, quickWasClickThrough = null;
-let dragStart, quickLift=null;
+let dragStart, dragOrigin=null, quickLift=null;
 let panelOpen=false, roamRoute=null, layoutKey='';
 let pointRoute=null,pointPicker,pointSelecting=false,petScale=1;
 let facing=-1,hoverFacing=null,inertiaTimer=null,dragSamples=[],motionGeneration=0;
@@ -42,9 +42,9 @@ let edge=null,edgeX=null,tucked=false,slideTimer=null,slideTarget=null,desktopMo
 let lastSampleWindow=null,ambientWanted=false,forwarded=false,lastForwardAt=0,lastWindow=null,perch=null,perchPending=null;
 let hiddenForFullscreen=false,fullscreenOverride=null,desktopPrefs={stroll:false,fullscreenHide:true};
 const health=createHealthClock();
-async function inspectActivity() {
+async function inspectActivity(primary=false) {
   const {stdout}=await execFile(path.join(process.env.SystemRoot,'System32/WindowsPowerShell/v1.0/powershell.exe'),
-    ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(root,'tools/companion-activity.ps1'),'-Once'],
+    ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(root,'tools/companion-activity.ps1'),'-Once',...(primary?['-PrimaryWindow','-ExcludeProcessId',String(process.pid)]:[])],
     {windowsHide:true,timeout:5000});
   return JSON.parse(stdout.replace(/^\uFEFF/,''));
 }
@@ -55,7 +55,7 @@ async function gameProcess(action,onlyIfHumanAbsent=false) {
   const {stdout}=await execFile(powershell,args,{windowsHide:true,timeout:20000});
   return JSON.parse(stdout.replace(/^\uFEFF/,''));
 }
-function setFacing(direction){facing=direction;win.webContents.send('companion-facing',-direction);}
+function setFacing(direction){facing=edge?-edge.side:direction;win.webContents.send('companion-facing',-facing);}
 function stopRoam(){roamRoute=null;}
 function stopInertia(){
   motionGeneration++;
@@ -104,7 +104,7 @@ function desktopSense(sample){
   if(!win||win.isDestroyed())return;
   if(sample.available&&sample.rect&&!sample.fullscreen&&!['desktop','companion'].includes(sample.app))lastWindow=sample;
   if(perch&&perchLost(perch,sample)){if(panelOpen||dragStart)perch=null;else fall();}
-  const fullscreen=desktopPrefs.fullscreenHide&&sample.available&&sample.fullscreen&&sample.app!=='companion';
+  const fullscreen=desktopPrefs.fullscreenHide&&sample.available&&sample.fullscreen&&!sample.captureOverlay&&sample.app!=='companion';
   if(!fullscreen)fullscreenOverride=null;
   if(fullscreen&&!hiddenForFullscreen&&win.isVisible()&&sample.windowId!==fullscreenOverride){
     hiddenForFullscreen=true;win.hide();win.webContents.send('companion-fullscreen',true);buildTray();
@@ -374,7 +374,7 @@ async function start() {
   await rm(path.join(output,'screen-cache'),{recursive:true,force:true});
   screenCapture = createScreenCapture({onCapture:()=>{if(win&&!win.isDestroyed())win.webContents.send('companion-vision-capture');},
     isAllowed:()=>ambientWanted&&Date.now()-activityHeartbeat<=20000&&Date.now()>=quietState.visionPausedUntil,
-    getSources:options=>desktopCapturer.getSources(options),inspect:inspectActivity,
+    getSources:options=>desktopCapturer.getSources(options),inspect:()=>inspectActivity(true),getPrimaryDisplay:()=>screen.getPrimaryDisplay(),
     upload:body=>request('/game-companion/vision',body,18000)});
   let lastActivityApp,lastActivityWindow,activityContext=0;
   activitySensor = createActivitySensor({ root, publish: async sample => {
@@ -395,17 +395,18 @@ async function start() {
     lastActivityApp = sample.available ? sample.app : undefined;
     lastActivityWindow=sample.available?sample.windowId:undefined;
     const result=await request('/game-companion/control', {action:'ambient-sample',sample:sample.available?
-      {available:true,app:sample.app,idleMs:sample.idleMs,contextKey:activityContext,captureSupported:!sample.sensitive&&Date.now()>=quietState.visionPausedUntil}:{available:false}});
-    if(result.capture)await screenCapture.capture(result.capture.ticket,sample);
+      {available:true,app:sample.app,idleMs:sample.idleMs,contextKey:activityContext,captureSupported:Date.now()>=quietState.visionPausedUntil}:{available:false}});
+    if(result.capture)await screenCapture.capture(result.capture.ticket,await inspectActivity(true));
     return result;
   } });
   const area = screen.getPrimaryDisplay().workArea;
   win = new BrowserWindow({ x: area.x + area.width - 320, y: area.y + 30,
     width: 300, height: 412, minWidth: 300, minHeight: 412,
-    frame: false, show: false, alwaysOnTop: true, transparent: true, hasShadow: false, backgroundColor: '#00000000',
+    frame: false, show: false, resizable: false, alwaysOnTop: true, transparent: true, hasShadow: false, backgroundColor: '#00000000',
     title: '鲸鱼合作搭子', webPreferences: { preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true, sandbox: true, nodeIntegration: false, partition: 'persist:companion-overlay' } });
   win.setMenu(null);
+  win.setContentProtection(false);
   setPointerPassthrough(true);
   screen.on('display-metrics-changed',refreshDock);
   screen.on('display-removed',refreshDock);
@@ -529,24 +530,27 @@ async function start() {
       if(!clickThrough)setPointerPassthrough(value!==true);return;
     }
     if (action === 'look') {
+      if(edge)return;
       if(hoverFacing!==null&&!roamRoute&&!pointRoute&&!dragStart&&!inertiaTimer){
         const b=win.getBounds(),direction=screen.getCursorScreenPoint().x<b.x+b.width/2?-1:1;
         if(direction!==facing)setFacing(direction);
       }return;
     }
     if (action === 'motion-stop') {stopInertia();return;}
+    if (action === 'drag-prepare') {dragOrigin=screen.getCursorScreenPoint();return;}
     if (action === 'drag-start') {
       quickLift=null;
       stopInertia();stopPoint();stopRoam();clearEdge();perch=null;
-      const cursor=value&&Number.isFinite(value.x)&&Number.isFinite(value.y)?value:screen.getCursorScreenPoint();
+      const cursor=dragOrigin??screen.getCursorScreenPoint();dragOrigin=null;
       dragStart={cursor,bounds:win.getBounds()};dragSamples=[{...cursor,t:performance.now()}];return;
     }
     if (action === 'drag-move') {
-      if(dragStart){const p=screen.getCursorScreenPoint();win.setPosition(dragStart.bounds.x+p.x-dragStart.cursor.x,dragStart.bounds.y+p.y-dragStart.cursor.y);
+      if(dragStart){const p=screen.getCursorScreenPoint();win.setPosition(Math.round(dragStart.bounds.x+p.x-dragStart.cursor.x),Math.round(dragStart.bounds.y+p.y-dragStart.cursor.y));
         dragSamples.push({...p,t:performance.now()});dragSamples=dragSamples.slice(-10);}
       return;
     }
     if (action === 'drag-end') {
+      dragOrigin=null;
       if(!dragStart)return;
       dragStart=null;dragSamples.push({...screen.getCursorScreenPoint(),t:performance.now()});
       const velocity=releaseVelocity(dragSamples),generation=motionGeneration;

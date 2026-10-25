@@ -6,7 +6,7 @@ module.exports=async function({win,output}){
   const samples=[];
   for(let i=0;i<30;i++){
     await new Promise(resolve=>setTimeout(resolve,500));
-    samples.push(await win.webContents.executeJavaScript(`(()=>{
+    const sample=await win.webContents.executeJavaScript(`(()=>{
       const v=document.getElementById('pet'),canvas=document.createElement('canvas');
       canvas.width=160;canvas.height=90;const ctx=canvas.getContext('2d');let pixels=0;
       if(v.readyState>=2){ctx.drawImage(v,0,0,160,90);const data=ctx.getImageData(0,0,160,90).data;
@@ -22,10 +22,11 @@ module.exports=async function({win,output}){
         front:v.classList.contains('pet-front'),opacity:style.opacity,visibility:style.visibility,pixels,
         layers,compositeVisible:layers.some(layer=>layer.pixels>0&&layer.opacity>0&&layer.visibility==='visible'),
         rect:{x:r.x,y:r.y,width:r.width,height:r.height},clip:document.body.style.clipPath};
-    })()`));
+    })()`);
+    samples.push({...sample,nativeVisible:win.isVisible(),bounds:win.getBounds()});
   }
   await writeFile(path.join(output,'visual-review-live.png'),(await win.webContents.capturePage()).toPNG());
   await writeFile(path.join(output,'visual-review-live.json'),JSON.stringify({
-    completed:samples.every(s=>s.compositeVisible),
+    completed:samples.every(s=>s.compositeVisible&&s.nativeVisible),
     pid:process.pid,at:new Date().toISOString(),samples},null,2));
 };

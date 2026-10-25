@@ -120,17 +120,18 @@ window.addEventListener('DOMContentLoaded', async () => {
   pet.addEventListener('pointerdown',event=>{
     if(event.button!==0)return;
     dragging=true;moved=false;startX=event.screenX;startY=event.screenY;
+    void ipcRenderer.invoke('companion-window','drag-prepare');
     pet.setPointerCapture(event.pointerId);
   });
   pet.addEventListener('pointermove',event=>{
     if(!dragging)return;
     if(!moved&&Math.abs(event.screenX-startX)+Math.abs(event.screenY-startY)>5){
       moved=true;window.dispatchEvent(new CustomEvent('companion-drag',{detail:true}));
-      void ipcRenderer.invoke('companion-window','drag-start',{x:startX,y:startY});
+      void ipcRenderer.invoke('companion-window','drag-start');
     }
     if(moved)void ipcRenderer.invoke('companion-window','drag-move');
   });
-  const endDrag=()=>{dragging=false;inside=undefined;if(moved){window.dispatchEvent(new CustomEvent('companion-drag',{detail:false}));void ipcRenderer.invoke('companion-window','drag-end',!matchMedia('(prefers-reduced-motion: reduce)').matches);}};
+  const endDrag=()=>{dragging=false;inside=undefined;if(moved)window.dispatchEvent(new CustomEvent('companion-drag',{detail:false}));void ipcRenderer.invoke('companion-window','drag-end',moved&&!matchMedia('(prefers-reduced-motion: reduce)').matches);};
   pet.addEventListener('pointerup',endDrag);pet.addEventListener('pointercancel',endDrag);
   pet.addEventListener('click',event=>{if(moved){event.stopImmediatePropagation();event.preventDefault();}},true);
   const quickForm=document.getElementById('quick-chat'),quickInput=document.getElementById('quick-message');

@@ -52,3 +52,10 @@ test('longer selected speech reaches Momo intact up to 120 characters', async ()
   await f.voice.speak({...message,text:'鲸'.repeat(120)},'game-session',new AbortController().signal);
   assert.equal(f.calls[0].text.length,120);
 });
+
+test('proactive paragraphs are voiced intact up to 240 characters without changing the selected voice',async()=>{
+  const f=fixture();
+  await f.voice.speak({...message,ambient:true,text:'鲸'.repeat(240)},'game-session',new AbortController().signal);
+  assert.equal(f.calls[0].text.length,240);
+  await assert.rejects(f.voice.speak({...message,id:'too-long',ambient:true,text:'鲸'.repeat(241)},'game-session',new AbortController().signal),/VOICE_TEXT_TOO_LONG/);
+});

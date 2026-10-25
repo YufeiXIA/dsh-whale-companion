@@ -134,6 +134,11 @@ test('panel only voices fresh selected lines, skips busy/old lines and stops on 
   context.panel.showBubble('鲸'.repeat(100),'long');
   assert.equal(timers.get(context.panel.bubbleTimer()).ms,30000);
   assert.equal(elements.get('bubble-text').textContent.length,100,'Longer speech is not truncated at the old 80-character limit');
+  context.panel.showBubble('鲸'.repeat(240),'ambient-long',240);
+  assert.equal(elements.get('bubble-text').textContent.length,240);
+  assert.equal(elements.get('speech-bubble').classList.contains('long'),true);
+  assert.equal(timers.get(context.panel.bubbleTimer()).ms,66400);
+  context.panel.showBubble('鲸'.repeat(100),'long');
   context.panel.enable();
   const speaking=context.panel.speak({id:'long',at:now});
   assert.equal(timers.has(context.panel.bubbleTimer()),false,'Bubble must stay while speech is being prepared');

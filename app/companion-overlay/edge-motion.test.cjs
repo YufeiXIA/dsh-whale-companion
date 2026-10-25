@@ -12,8 +12,8 @@ function fixture(x=-60,y=200){
   const area={x:0,y:0,width:1920,height:1040},timers=new Map(),changes=[],events=[];
   const schedule=(fn,delay)=>{const key=++id;timers.set(key,{fn,at:time+delay,delay});return key;};
   const context={edge:null,edgeX:null,tucked:false,slideTimer:null,slideTarget:null,desktopMotionAllowed:true,
-    dragStart:null,dragSamples:[],panelOpen:false,layoutKey:'false,1',quickLift:null,quickWasClickThrough:null,
-    pointSelecting:false,perch:null,petScale:1,smoke:false,edgeCheck:false,clickThrough:false,pointerIgnored:false,
+    dragStart:null,dragOrigin:null,dragSamples:[],panelOpen:false,layoutKey:'false,1',quickLift:null,quickWasClickThrough:null,roamRoute:null,pointRoute:null,inertiaTimer:null,
+    pointSelecting:false,perch:null,petScale:1,smoke:false,edgeCheck:false,clickThrough:false,pointerIgnored:false,facing:1,hoverFacing:null,
     edgeSnap,compactFooter,quickChatY,performance:{now:()=>time},
     setInterval:schedule,clearInterval:key=>timers.delete(key),
     screen:{getDisplayMatching:()=>({workArea:area}),getCursorScreenPoint:()=>({x:50,y:500})},
@@ -26,7 +26,8 @@ function fixture(x=-60,y=200){
   const layoutFunctions=main.slice(main.indexOf('function setLayout('),main.indexOf('async function request('));
   const picking=main.slice(main.indexOf('async function pickPoint('),main.indexOf('function setLayout('));
   const registration=main.slice(main.indexOf("ipcMain.handle('companion-window'"),main.indexOf('  toggleAvailable = globalShortcut.register'));
-  vm.runInNewContext(edgeFunctions+'\n'+picking+'\n'+layoutFunctions+'\n'+registration,context);
+  const facingFunction=main.slice(main.indexOf('function setFacing('),main.indexOf('function stopRoam('));
+  vm.runInNewContext(facingFunction+'\n'+edgeFunctions+'\n'+picking+'\n'+layoutFunctions+'\n'+registration,context);
   return {context,events,changes,get bounds(){return {...bounds};},get centre(){return context.edge?context.edgeX+context.edge.baseWidth/2:bounds.x+bounds.width/2;},
     invoke:(action,value,scale)=>handler({sender:context.win.webContents,senderFrame:context.win.webContents.mainFrame},action,value,scale),
     advance(ms){const until=time+ms;for(;;){const next=[...timers].filter(([,v])=>v.at<=until).sort((a,b)=>a[1].at-b[1].at)[0];if(!next)break;
@@ -61,9 +62,28 @@ test('active proactive replies, input focus and release keep both dock and carri
 
 test('only an actual drag restores compact bounds without a character jump',async()=>{
   const f=fixture();f.dock();const centre=f.centre;
-  await f.invoke('drag-start',{x:15,y:450});
+  await f.invoke('drag-prepare');await f.invoke('drag-start',{x:15.333333,y:450.666667});
   assert.equal(f.context.edge,null);assert.equal(f.bounds.width,300);assert.equal(f.centre,centre);
-  assert.equal(f.context.dragStart.cursor.x,15);
+  assert.equal(f.context.dragStart.cursor.x,50,'native pointer origin wins over renderer screen coordinates');
+});
+
+test('mixed-DPI dragging always submits integer native window positions',async()=>{
+  const f=fixture(2800,-300);
+  let cursor={x:3000,y:-20};f.context.screen.getCursorScreenPoint=()=>cursor;
+  await f.invoke('drag-prepare');await f.invoke('drag-start',{x:3000.666667,y:-19.333333});
+  cursor={x:3007.333333,y:-11.333333};await f.invoke('drag-move');
+  assert.equal(f.bounds.x,2807);assert.equal(f.bounds.y,-291);
+  assert.ok(Number.isInteger(f.bounds.x)&&Number.isInteger(f.bounds.y));
+});
+
+test('hover and look events cannot turn a docked pet toward the wall',async()=>{
+  for(const x of [-60,1700]){
+    const f=fixture(x);f.dock();const inward=-f.context.edge.side;
+    f.context.hoverFacing=inward;
+    f.context.screen.getCursorScreenPoint=()=>({x:x<0?10:1910,y:500});
+    await f.invoke('look');assert.equal(f.context.facing,inward);
+    f.context.setFacing(-inward);assert.equal(f.context.facing,inward,'all facing changes respect the dock side');
+  }
 });
 
 test('chat expansion, destination picking and size changes preserve the dock',async()=>{

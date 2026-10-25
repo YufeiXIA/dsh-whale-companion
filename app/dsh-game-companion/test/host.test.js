@@ -55,6 +55,46 @@ test('desktop activity uses a chat-only prompt, guarded voice line and preserves
   assert.equal(JSON.parse(await readFile(f.stateFile, 'utf8')).ambient.enabled, false);
 });
 
+test('proactive context combines recent screens and fresh game facts without treating old scenes as current',async t=>{
+  const f=await fixture(t),now=Date.now();
+  f.host.recentVisuals=[
+    {summary:'过期的画面',capturedAt:now-16*60000,application:'浏览器'},
+    {summary:'蓝鲸介绍',capturedAt:now-60000,application:'浏览器'},
+    {summary:'当前代码画面',capturedAt:now,application:'代码编辑器'}];
+  const event={kind:'company',category:'coding',application:'代码编辑器',minutes:8,visual:f.host.recentVisuals[2]};
+  let context=f.host.ambientContext(event);
+  assert.equal(context.visual.summary,'当前代码画面');
+  assert.deepEqual(context.recent_screens.map(v=>v.summary),['蓝鲸介绍']);
+  assert.equal(context.recent_game,null);
+  f.host.scheduler.connected=true;f.host.bindingConfirmed=true;f.host.lastObservationAt=now;
+  f.host.lastObservation={phase:'player',state:{state_type:'monster',run:{floor:3},player:{character:'Ironclad',hp:42,gold:50},battle:{round:2,turn:'player'}}};
+  context=f.host.ambientContext(event);assert.equal(context.recent_game.player.hp,42);
+  f.host.lastObservationAt=now-121000;assert.equal(f.host.ambientContext(event).recent_game,null);
+  f.host.lastObservationAt=now;f.host.scheduler.connected=false;assert.equal(f.host.ambientContext(event).recent_game,null);
+  await f.host.save();const stored=await readFile(f.stateFile,'utf8');
+  assert.equal(stored.includes('蓝鲸介绍'),false,'the extra screenshot buffer is not copied into saved companion state');
+});
+
+test('a final-only proactive paragraph is delivered once, while stale text and tool echoes stay silent',async t=>{
+  for(const mode of ['final','stale','tool-first'])await t.test(mode,async t=>{
+    const f=await fixture(t);let time=Date.now(),emitted=false;
+    f.host.ambient=new AmbientCompanion({}, {now:()=>time,random:()=>0});
+    f.host.ambient.nextAt=time;f.host.ambient.lastUserAt=time-60000;
+    f.agent.whenIdle=async()=>{
+      if(emitted)return;emitted=true;
+      if(mode==='stale')f.host.ambient.sample({available:true,app:'browser',idleMs:0});
+      if(mode==='tool-first')await f.registered.get('companion_say').execute({text:'工具已经说过这句。',spoken:true},{});
+      f.emit({type:'assistant/message',data:{message:{content:[{type:'text',text:'这页里蓝鲸和小磷虾的体型差别真大，看着还有点可爱。你刚才说想看海，我也想跟着多看一会儿。'}]}}});
+    };
+    for(let i=0;i<6;i++){await f.host.desktopSample({available:true,app:'code',idleMs:600000});time+=10000;}
+    await f.host.scheduler.whenIdle();
+    const lines=f.host.messages.filter(m=>m.ambient);
+    assert.equal(lines.length,mode==='stale'?0:1);
+    if(lines.length)assert.equal(lines[0].spoken,true);
+    if(mode==='tool-first')assert.equal(lines[0].text,'工具已经说过这句。');
+  });
+});
+
 test('vision capture requires an expiring single-use ticket; context changes cancel it without game actions',async t=>{
   const f=await fixture(t);let time=Date.now();
   f.host.ambient=new AmbientCompanion({visionOptIn:true}, {now:()=>time,random:()=>0});
@@ -113,7 +153,11 @@ test('an unclassified window reaches proactive chat and an unavailable frame doe
   const prompt=JSON.parse(sent[1].content[0].text);
   assert.equal(prompt.environment.application,'其他程序');assert.equal(prompt.environment.visual,null);
   assert.match(prompt.response_style,/主动关心、好奇/);
-  await f.registered.get('companion_say').execute({text:'刚才突然想到你，就想过来聊一句。',spoken:true},{});
+  const longer='刚才突然想到你，就想过来聊一句。'.repeat(9);
+  await f.registered.get('companion_say').execute({text:longer,spoken:true},{});
+  assert.equal(f.host.messages.at(-1).text,longer);
+  assert.equal(f.host.messages.at(-1).spoken,true);
+  await assert.rejects(f.registered.get('companion_say').execute({text:'鲸'.repeat(241),spoken:true},{}),/240/);
   assert.equal(f.host.messages.at(-1).ambient,true);
   assert.equal(f.host.ambient.status().lastResult,'said');
   gate.resolve();await f.host.scheduler.whenIdle();

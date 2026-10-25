@@ -2,6 +2,30 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const {createScreenCapture}=require('./screen-capture.cjs');
 
+test('primary capture uses the visible screen composite cropped to its top window, never a secondary screen',async()=>{
+  const sample={available:true,app:'browser',windowId:'42',idleMs:600000,
+    rect:{x:200,y:100,width:1200,height:800},screenBounds:{x:0,y:0,width:2560,height:1440}};
+  let crop,body;
+  const capture=createScreenCapture({getPrimaryDisplay:()=>({id:7}),inspect:async()=>sample,
+    getSources:async options=>{
+      assert.deepEqual(options.types,['screen']);
+      return [{display_id:'8',thumbnail:{isEmpty(){throw Error('secondary screen must not be used');}}},
+        {display_id:'7',thumbnail:{isEmpty:()=>false,getSize:()=>({width:1280,height:720}),crop:rect=>{crop=rect;return {toJPEG:()=>Buffer.from([255,216,255,217])};}}}];
+    },upload:async value=>{body=value;}});
+  await capture.capture('primary-ticket',sample);capture.close();
+  assert.deepEqual(crop,{x:100,y:50,width:600,height:400});
+  assert.equal(body.source,'primary-visible-window');assert.equal(body.sourceApp,'browser');assert.ok(body.jpeg);
+});
+
+test('an unavailable primary screen never falls back to another monitor',async()=>{
+  const sample={available:true,app:'browser',windowId:'42'};let body;
+  const capture=createScreenCapture({getPrimaryDisplay:()=>({id:7}),inspect:async()=>sample,
+    getSources:async()=>[{display_id:'8',thumbnail:{isEmpty(){throw Error('must not inspect secondary image');}}}],
+    upload:async value=>{body=value;}});
+  await capture.capture('missing-primary',sample);capture.close();
+  assert.deepEqual(body,{ticket:'missing-primary',unavailable:true});
+});
+
 test('authorized passive viewing can capture the current window after long keyboard inactivity',async()=>{
   const sample={available:true,app:'media',windowId:'42',idleMs:3600000};
   const bodies=[];
@@ -32,10 +56,11 @@ test('only the selected active window is consumed, in memory, with a visible cap
   assert.equal(selected,2);assert.equal(uploaded,2);assert.equal(signals,2);
 });
 
-test('changed, locked or sensitive windows never send image bytes',async t=>{
+test('changed, locked, sensitive or screen-clipping windows never send image bytes',async t=>{
   for(const inspect of [
     (()=>{let count=0;return async()=>({available:true,app:'browser',windowId:String(++count),idleMs:0});})(),
     async()=>({available:true,app:'browser',windowId:'1',idleMs:0,sensitive:true}),
+    async()=>({available:true,app:'other',windowId:'1',idleMs:0,captureOverlay:true}),
     async()=>({available:false})]){
     let body,signals=0;
     const capture=createScreenCapture({inspect,onCapture:()=>signals++,

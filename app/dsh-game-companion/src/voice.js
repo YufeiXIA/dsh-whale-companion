@@ -110,7 +110,7 @@ export class CompanionVoice {
     if (preset !== null && (typeof preset !== 'string' || !Object.hasOwn(EMOTION_PRESETS, preset))) throw new Error('VOICE_EMOTION_REQUIRED');
     if (message?.role !== 'assistant' || message.spoken !== true || typeof message.id !== 'string' ||
         typeof message.text !== 'string' || !message.text.trim()) throw new Error('VOICE_MESSAGE_REQUIRED');
-    if (Array.from(message.text).length > 120) throw new Error('VOICE_TEXT_TOO_LONG');
+    if (Array.from(message.text).length > (message.ambient ? 240 : 120)) throw new Error('VOICE_TEXT_TOO_LONG');
     signal.throwIfAborted();
     if (this.cache.has(message.id)) return this.cache.get(message.id);
     if (this.active) throw new Error('VOICE_BUSY');

@@ -16,7 +16,7 @@ The code is new, not a fork. It still uses the original plugin's 95 animations, 
 - She has a persona and memory, and you can keep several chats.
 - 69 new animations.
 - Desktop tricks: feeding, head pats, flinging, edge snapping and peeking in from the screen edge, walking along the taskbar, sitting on top of windows, hiding when another app goes fullscreen, focus timers, and stretch, water and bedtime reminders.
-- Optional: she can check in now and then. She only knows what kind of app you're using. A screen glance is opt-in and stays in memory.
+- Optional: she can check in using your app category, recent conversation and an opt-in glimpse of the visible top window on the primary monitor. A secondary-monitor focus never changes the screenshot target. Proactive messages can use a short paragraph, up to 240 characters.
 - Reading or watching videos without keyboard or mouse activity does not mute proactive company. Each unanswered greeting adds five minutes to the selected interval; replying clears the extra delay. She can revisit the same app with a new topic.
 - Experimental *Slay the Spire 2* teammate.
 

@@ -4,6 +4,18 @@ const { EventEmitter } = require('node:events');
 const { PassThrough } = require('node:stream');
 const { createActivitySensor } = require('./activity.cjs');
 
+test('the screenshot overlay does not hide the pet as a fullscreen application',()=>{
+  const fs=require('node:fs'),vm=require('node:vm');
+  const main=fs.readFileSync(require.resolve('./main.cjs'),'utf8');let hides=0,shows=0;
+  const context={win:{isDestroyed:()=>false,isVisible:()=>true,hide(){hides++;},webContents:{send(){}}},
+    desktopPrefs:{fullscreenHide:true},hiddenForFullscreen:false,fullscreenOverride:null,perch:null,
+    health:{sample:()=>null},buildTray(){},showWithoutFocus(){shows++;}};
+  vm.runInNewContext(main.slice(main.indexOf('function desktopSense('),main.indexOf('// Docked characters stay')),context);
+  context.desktopSense({available:true,app:'other',fullscreen:true,captureOverlay:true});assert.equal(hides,0);
+  context.desktopSense({available:true,app:'game',fullscreen:true});assert.equal(hides,1);
+  context.desktopSense({available:true,app:'other',fullscreen:true,captureOverlay:true});assert.equal(shows,1);
+});
+
 test('native helper is hidden, singleton, coalesces samples and closes with the overlay', async () => {
   let child, launches = 0, kills = 0, release;
   const received = [];

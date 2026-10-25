@@ -12,7 +12,7 @@
 | `desktop-life.cjs` | 散步路线、爬窗口位置、掉落、提醒计时 |
 | `edge-snap.cjs`、`roaming.cjs`、`inertia.cjs` | 贴边、乱跑、甩出去 |
 | `activity.cjs` + `tools/companion-activity.ps1` | 每 2 秒看一次前台是哪类程序、是否全屏 |
-| `screen-capture.cjs` | 截当前窗口，只放内存 |
+| `screen-capture.cjs` | 主屏可见画面裁剪到顶层页面，只放内存，不回退到副屏 |
 
 `*-check.cjs` 和 `smoke.cjs` 是作者在自己电脑上检查真实窗口用的，需要宿主在跑。
 
