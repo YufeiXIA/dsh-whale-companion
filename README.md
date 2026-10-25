@@ -89,7 +89,6 @@
 </tr>
 </table>
 
-<img src="docs/media/tray-real.png" width="300" alt="实际托盘菜单，包含聊天、停靠、散步和专注选项">
 
 这些是 Windows 原生浮窗的屏幕录制，动作由录制脚本触发，背景使用中性演示窗口。右键指点移动这次未录到完整过程，没有收录。录制说明见 [素材说明](docs/media/README.md)。
 
