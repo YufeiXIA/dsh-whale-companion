@@ -4,6 +4,7 @@ import { gameKnowledge } from './game-knowledge.js';
 import { runContext, setRunPlan, setRunNotes } from './run-memory.js';
 import { adviseCombat } from './combat-adviser.js';
 import { observeBattle, recordDecision, similarBattles, addBattleHypothesis } from './battle-memory.js';
+import { TONE_IDS, TONE_GUIDE } from './voice-tones.js';
 
 const names = new Set(['game_observe', 'game_act', 'game_lookup', 'game_plan', 'game_notes', 'game_advise', 'game_review', 'companion_say', 'companion_task']);
 const output = { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] };
@@ -124,16 +125,18 @@ export function installTools(ctx, host) {
       throw error;
     }
   });
-  register('companion_say', 'Deliver one natural reply with its emotion. spoken=true for natural speech. Proactive ambient company may use 2–4 short sentences, usually 60–160 characters and at most 240; ordinary direct casual replies usually stay within 100 characters, with no minimum. This is normally the ENTIRE casual reply: end the turn afterwards, without a second explanation. Only add final detail when the question needs it. Use listening_nod for acknowledging or understanding, bright_idea for a new suggestion, relieved for relief after a resolved worry or confirmed close call. Game prop expressions: controller_play for gaming together, card_strategy for discussing cards, shield_ready for preparing defense, potion_offer for reminding about potions, map_route for route planning, loot_proud only after confirmed rewards. These are visual gestures, never proof of a game action or outcome. Routine game actions and unchanged waiting need no speech. Unsolicited comments at least 20 seconds apart; direct replies bypass cooldown. Respect text-only with spoken=false. This does not send native game chat. ' + generalGameGuide, {
+  register('companion_say', 'Deliver one natural reply with its emotion. spoken=true for natural speech. Proactive ambient company may use 2–4 short sentences, usually 60–160 characters and at most 240; ordinary direct casual replies usually stay within 100 characters, with no minimum. This is normally the ENTIRE casual reply: end the turn afterwards, without a second explanation. Only add final detail when the question needs it. Use listening_nod for acknowledging or understanding, bright_idea for a new suggestion, relieved for relief after a resolved worry or confirmed close call. Game prop expressions: controller_play for gaming together, card_strategy for discussing cards, shield_ready for preparing defense, potion_offer for reminding about potions, map_route for route planning, loot_proud only after confirmed rewards. These are visual gestures, never proof of a game action or outcome. Routine game actions and unchanged waiting need no speech. Unsolicited comments at least 20 seconds apart; direct replies bypass cooldown. Respect text-only with spoken=false. This does not send native game chat. ' + generalGameGuide + ' Voice: ' + TONE_GUIDE, {
     animation: { type: 'string', enum: ['none', ...chatAnimations.map(item => item.id)], description: 'One installed animation matching the current conversation. Independent of voice emotion. Use the current animation candidates as hints; none when irrelevant or a negated request.' },
+    tone: { type: 'string', enum: TONE_IDS, description: 'How the line should sound when spoken, from what is being said. Independent of emotion and animation.' },
+    tone_end: { type: 'string', enum: TONE_IDS, description: 'Only when the last sentence clearly turns to another tone; otherwise omit.' },
     text: { type: 'string' }, spoken: { type: 'boolean' }, emotion: { type: 'string', enum: ['neutral', 'happy_hop', 'tsundere_pout', 'shy_surprise', 'taking_notes', 'listening_nod', 'bright_idea', 'relieved', 'controller_play', 'card_strategy', 'shield_ready', 'potion_offer', 'map_route', 'loot_proud', ...Object.keys(generalGameExpressions)] }
-  }, ['text', 'spoken'], async ({ text, emotion = 'neutral', spoken = false, animation }) => {
+  }, ['text', 'spoken'], async ({ text, emotion = 'neutral', spoken = false, animation, tone, tone_end }) => {
     if (typeof text !== 'string' || text.length > 2000) throw new Error('Text must contain at most 2000 characters');
     if (host.ambientTurn && (!text.trim() || Array.from(text).length > 240)) throw new Error('Ambient chat must contain 1 to 240 characters. Silence is allowed.');
     if (host.panelReply && host.singleCasualReply()) {
       return { channel: 'companion-panel', delivered: false, spoken: false, reason: 'reply-already-delivered' };
     }
-    const message = host.say(text, emotion, null, spoken, animation);
+    const message = host.say(text, emotion, null, spoken, animation, { tone, toneEnd: tone_end });
     if (!message) return { channel: 'companion-panel', delivered: false, spoken: false, reason: 'reply-no-longer-current' };
     host.panelLineThisTurn = true;
     host.panelReply = message;

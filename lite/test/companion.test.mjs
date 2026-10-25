@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { LiteHost } from '../host/host.mjs';
 import { startServer } from '../host/server.mjs';
 import { EMOTION_PRESETS, EMOTION_PREVIEW_TEXT, emotionDelivery } from '../../app/dsh-game-companion/src/voice.js';
+import { toneDelivery } from '../../app/dsh-game-companion/src/voice-tones.js';
 
 const chatBase = 'https://llm.test/v1', voiceEndpoint = 'https://voice.test/api/tts';
 const audioLink = 'http://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/clip.wav?Expires=1';
@@ -97,7 +98,7 @@ test('she speaks up about the current app, then about an app opened in the backg
   const line = host.status().messages.at(-1);
   assert.equal(line.ambient, true);
   assert.equal(line.emotion, 'listening_nod');
-  assert.match(systemPrompt(chats()[0]), /这次是你主动找朋友说话/);
+  assert.match(systemPrompt(chats()[0]), /这次是你主动找用户说话/);
   assert.match(systemPrompt(chats()[0]), /"kind":"application","application":"代码编辑器"/);
   assert.equal(host.status().ambient.lastResult, 'said');
   assert.equal(host.status().ambient.unanswered, 1);
@@ -115,7 +116,7 @@ test('a message typed while she is thinking of a proactive line drops that line'
   let release;
   const held = new Promise(resolve => { release = resolve; });
   const { fetchApi, chats } = services({ reply: async body => {
-    if (/主动找朋友说话/.test(body.messages[0].content)) { await held; return { text: '欸，你在干嘛？', emotion: 'neutral', animation: 'none' }; }
+    if (/主动找用户说话/.test(body.messages[0].content)) { await held; return { text: '欸，你在干嘛？', emotion: 'neutral', animation: 'none' }; }
     return { text: '我在呢，你说。', emotion: 'neutral', animation: 'none' };
   } });
   const { host, now } = await setup(t, { fetchApi });
@@ -196,6 +197,23 @@ test('a cancelled or unavailable screenshot never reaches the model', async t =>
   assert.equal(host.status().ambient.visionStatus, 'capture-unavailable');
   assert.equal(calls.some(call => call.body?.messages?.some(message => Array.isArray(message.content))), false);
   assert.equal(host.status().messages.at(-1).ambient, true);
+});
+
+test('the model picks a voice tone per reply and the voice speaks in it, turning on the last sentence', async t => {
+  const replies = [{ text: '才没有等你。只是顺手。', emotion: 'neutral', tone: 'tsundere', tone_end: 'shy', animation: 'none', spoken: true },
+    { text: '好。', emotion: 'neutral', tone: 'shouting_loudly', animation: 'none', spoken: true }];
+  const { fetchApi, calls } = services({ reply: () => replies.shift() });
+  const { host } = await setup(t, { fetchApi });
+  await host.control({ action: 'chat', text: '我回来了' });
+  await idle(host);
+  const turned = host.status().messages.at(-1);
+  assert.deepEqual([turned.tone, turned.toneEnd], ['tsundere', 'shy']);
+  assert.match(calls[0].body.messages[0].content, /tone 按这句话当下的情绪选/);
+  await host.speak({ messageId: turned.id });
+  assert.equal(calls.at(-2).body.input.instruction, toneDelivery('tsundere', 'shy'));
+  await host.control({ action: 'chat', text: '嗯' });
+  await idle(host);
+  assert.equal(host.status().messages.at(-1).tone, undefined, 'an unknown tone is dropped');
 });
 
 test('voice reads a reply in its emotion, caches it, and never sends the key to the audio link', async t => {
@@ -325,6 +343,26 @@ test('settings, chats, memory and proactive settings survive a restart; memory c
   assert.match(memory.text, /叫我小鱼/);
   await again.control({ action: 'forget-memory', id: memory.id });
   assert.equal(again.status().personalMemory.entries.length, 0);
+});
+
+test('what she calls the user is set from the panel, cleaned, sent with the time and kept across restart', async t => {
+  const { fetchApi, chats } = services();
+  const first = await setup(t, { fetchApi });
+  assert.equal(first.host.status().userTitle, '你');
+  await first.host.control({ action: 'user-title', title: ' 主人{{x}}\n【' });
+  assert.equal(first.host.status().userTitle, '主人x');
+  await first.host.control({ action: 'chat', text: '在吗' });
+  await idle(first.host);
+  const prompt = systemPrompt(chats().at(-1));
+  assert.match(prompt, /当面叫用户时用「主人x」/);
+  assert.match(prompt, /现在是 \d{4}年\d{1,2}月\d{1,2}日 \d{2}:\d{2} 周./);
+  await first.host.control({ action: 'user-title', title: '' });
+  assert.equal(first.host.status().userTitle, '你');
+  await first.host.control({ action: 'user-title', title: '阿明' });
+
+  const again = new LiteHost({ dataDir: first.dataDir, secrets: first.secrets, persona: 'p', fetchApi, now: first.now });
+  await again.initialize();
+  assert.equal(again.status().userTitle, '阿明');
 });
 
 test('the panel only gets the latest 100 messages', async t => {

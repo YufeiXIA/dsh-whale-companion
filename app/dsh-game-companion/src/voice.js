@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { gameVoiceModel, gameVoiceTransport } from './qwen-compat.js';
 import { PresetVoiceProvider, COMPANION_VOICE, COMPANION_VOICE_MODEL, COMPANION_VOICE_ENDPOINT } from './preset-voice.js';
+import { fishToneText, toneDelivery, validTone } from './voice-tones.js';
 
 export const EMOTION_VOICE = COMPANION_VOICE;
 export const EMOTION_MODEL = COMPANION_VOICE_MODEL;
@@ -95,43 +96,85 @@ export async function loadCompanionVoice(authorizer) {
 
 export const loadEmotionalVoice = loadCompanionVoice;
 
+// Fish Audio community voice 「蓝色大肥鱼」. The user's key sits in fish-audio-key.txt next to
+// the companion data; it is read per request and never leaves the host.
+export const FISH_VOICE = 'fe50cdf3040449298470d58ff0991e1d';
+export const FISH_MODEL = 's2.1-pro-free';
+// The four audition presets as voice tones; 小傲娇 softens into 害羞 on its last sentence.
+export const PRESET_TONES = Object.freeze({ gentle: ['gentle', null], happy: ['happy', null], tsundere: ['tsundere', 'shy'], serious: ['serious', null] });
+
+export function loadFishVoice(authorizer, { keyFile, voice = FISH_VOICE, model = FISH_MODEL, fetch = globalThis.fetch }) {
+  const provider = { synthesize: async ({ scope, text, expression }, signal) => {
+    const key = (await readFile(keyFile, 'utf8').catch(() => '')).trim();
+    if (!key) throw new Error('VOICE_CREDENTIAL_UNAVAILABLE');
+    const permit = await authorizer.authorize({ scope, model, textCharacters: Array.from(text).length }, signal);
+    try {
+      const response = await fetch('https://api.fish.audio/v1/tts', { method: 'POST', signal,
+        headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json', model },
+        body: JSON.stringify({ text: fishToneText(text, expression?.tone, expression?.toneEnd), reference_id: voice, format: 'wav', sample_rate: 24000, latency: 'balanced' }) });
+      if (!response.ok) throw new Error(response.status === 402 ? 'VOICE_QUOTA_EXHAUSTED' : 'VOICE_UNAVAILABLE');
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      // Streamed WAV carries placeholder sizes; write the real ones so every player accepts it.
+      const view = new DataView(bytes.buffer);
+      if (bytes.length > 44 && String.fromCharCode(...bytes.subarray(36, 40)) === 'data') {
+        view.setUint32(4, bytes.length - 8, true);
+        view.setUint32(40, bytes.length - 44, true);
+      }
+      await permit.settle({ status: 'succeeded' });
+      return { audio: { bytes, mimeType: 'audio/wav' }, durationMs: null };
+    } catch (error) {
+      await permit.settle({ status: 'failed' });
+      throw error;
+    }
+  } };
+  return { provider, voice, model, store: { read: async (_scope, audio) => audio.bytes, releaseScope: async () => {} } };
+}
+
 export class CompanionVoice {
   constructor({ directory, load = loadCompanionVoice, loadEmotional = loadEmotionalVoice,
-    previewDirectory = new URL('../public/voice-previews/longhua-v3.1/', import.meta.url) }) {
+    loadFish = authorizer => loadFishVoice(authorizer, { keyFile: join(directory, 'fish-audio-key.txt') }),
+    previewDirectory = new URL('../public/voice-previews/longhua-v3.1/', import.meta.url),
+    fishPreviewDirectory = new URL('../public/voice-previews/fish/', import.meta.url) }) {
     this.directory = directory;
     this.load = load;
     this.loadEmotional = loadEmotional;
+    this.loadFish = loadFish;
     this.previewDirectory = previewDirectory;
+    this.fishPreviewDirectory = fishPreviewDirectory;
     this.cache = new Map();
     this.active = null;
     this.runtime = null;
     this.emotionRuntime = null;
   }
 
-  async previewEmotion(preset, sessionId, signal) {
+  async previewEmotion(preset, sessionId, signal, voiceId = 'longhua') {
+    if (!['longhua', 'fish'].includes(voiceId)) throw new Error('VOICE_EMOTION_UNAVAILABLE');
     if (typeof preset !== 'string' || !Object.hasOwn(EMOTION_PRESETS, preset)) throw new Error('VOICE_EMOTION_REQUIRED');
     signal.throwIfAborted();
+    const fish = voiceId === 'fish', directory = fish ? this.fishPreviewDirectory : this.previewDirectory;
     // Installed audition clips play locally, with no repeat synthesis charge.
-    if (this.previewDirectory) {
+    if (directory) {
       try {
-        const bytes = await readFile(new URL(`${preset}.wav`, this.previewDirectory));
+        const bytes = await readFile(new URL(`${preset}.wav`, directory));
         signal.throwIfAborted();
-        return { bytes, mimeType: 'audio/wav', voice: EMOTION_VOICE };
+        return { bytes, mimeType: 'audio/wav', voice: fish ? FISH_VOICE : EMOTION_VOICE };
       } catch (error) {
         if (error.code !== 'ENOENT') throw error;
       }
     }
-    return this.speak({ id: `${sessionId}:emotion-preview-longhua-v3.1:${preset}`, role: 'assistant', spoken: true,
-      text: EMOTION_PREVIEW_TEXT, emotion: preset }, sessionId, signal, preset);
+    return this.speak({ id: `${sessionId}:emotion-preview-${fish ? 'fish' : 'longhua-v3.1'}:${preset}`, role: 'assistant', spoken: true,
+      text: EMOTION_PREVIEW_TEXT, emotion: preset }, sessionId, signal, preset, voiceId);
   }
 
-  async speak(message, sessionId, signal, preset = null) {
+  async speak(message, sessionId, signal, preset = null, voiceId = 'longhua') {
+    if (!['longhua', 'fish'].includes(voiceId)) throw new Error('VOICE_SELECTION_REQUIRED');
     if (preset !== null && (typeof preset !== 'string' || !Object.hasOwn(EMOTION_PRESETS, preset))) throw new Error('VOICE_EMOTION_REQUIRED');
     if (message?.role !== 'assistant' || message.spoken !== true || typeof message.id !== 'string' ||
         typeof message.text !== 'string' || !message.text.trim()) throw new Error('VOICE_MESSAGE_REQUIRED');
     if (Array.from(message.text).length > (message.ambient ? 240 : 120)) throw new Error('VOICE_TEXT_TOO_LONG');
     signal.throwIfAborted();
-    if (this.cache.has(message.id)) return this.cache.get(message.id);
+    const cacheKey = `${voiceId}:${message.id}`;
+    if (this.cache.has(cacheKey)) return this.cache.get(cacheKey);
     if (this.active) throw new Error('VOICE_BUSY');
     const controller = new AbortController();
     this.active = controller;
@@ -149,17 +192,19 @@ export class CompanionVoice {
         return { settle: async outcome => appendFile(file, JSON.stringify({ ...audit,
           status: outcome.status, durationMs: Date.now() - startedAt, usage: outcome.usage }) + '\n') };
       } };
-      runtime = preset === null
+      if (voiceId === 'fish') runtime = this.fishRuntime ??= await this.loadFish(authorizer);
+      else runtime = preset === null
         ? this.runtime ??= await this.load(authorizer)
         : this.emotionRuntime ??= await this.loadEmotional(authorizer);
-      const delivery = EMOTION_PRESETS[preset]?.delivery ?? emotionDelivery(message.emotion);
+      const [tone, toneEnd] = preset !== null ? PRESET_TONES[preset] : [validTone(message.tone), validTone(message.toneEnd)];
+      const delivery = EMOTION_PRESETS[preset]?.delivery ?? (tone ? toneDelivery(tone, toneEnd) : emotionDelivery(message.emotion));
       const result = await runtime.provider.synthesize({ scope, text: message.text,
-          expression: { emotion: message.emotion ?? 'neutral', intensity: message.emotion === 'happy_hop' ? 0.5 : 0.3, delivery, gesture: null }
+          expression: { emotion: message.emotion ?? 'neutral', intensity: message.emotion === 'happy_hop' ? 0.5 : 0.3, delivery, gesture: null, tone, toneEnd }
       }, combined);
       combined.throwIfAborted();
       const audio = { bytes: await runtime.store.read(scope, result.audio), mimeType: result.audio.mimeType,
         durationMs: result.durationMs, voice: runtime.voice, model: runtime.model };
-      this.cache.set(message.id, audio);
+      this.cache.set(cacheKey, audio);
       if (this.cache.size > 8) this.cache.delete(this.cache.keys().next().value);
       return audio;
     } finally {

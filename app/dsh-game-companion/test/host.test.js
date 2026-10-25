@@ -215,7 +215,7 @@ async function fixture(t, { saved, createGate, events = [], consume = true, onCr
     } catch (error) { res.writeHead(500); res.end(error.message); }
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const calls = [], registered = new Map(), guards = [], sections = [];
+  const calls = [], registered = new Map(), guards = [], sections = [], variables = new Map();
   const listeners = new Map();
   const globalListeners = new Map();
   const stream = (options, next) => globalListeners.get('llm/stream')?.(options, next) ?? next();
@@ -265,7 +265,7 @@ async function fixture(t, { saved, createGate, events = [], consume = true, onCr
     agent.session = session;
     options.setup({ tools: { register: tool => registered.set(tool.name, tool), guard: guard => guards.push(guard),
       restrict: options => calls.push(['restrict', options]), presentAs: mode => calls.push(['presentAs', mode]) },
-      systemPrompt: { section: section => sections.push(section), variable: () => {} }, on: (event, listener) => listeners.set(event, listener) }, agent);
+      systemPrompt: { section: section => sections.push(section), variable: (name, value) => variables.set(name, value) }, on: (event, listener) => listeners.set(event, listener) }, agent);
     return handle;
   }
   let projection;
@@ -293,7 +293,7 @@ async function fixture(t, { saved, createGate, events = [], consume = true, onCr
     }
   });
   await host.initialize(); clearTimeout(host.timer);
-  return { host, runtime, calls, registered, guards, sections, stateFile, agent, ctx, emit, stream,
+  return { host, runtime, calls, registered, guards, sections, variables, stateFile, agent, ctx, emit, stream,
     preStep: decision => listeners.get('agent/pre-step')(decision, async () => ({ kind: 'enter' })),
     requestConfig: config => listeners.get('agent/request')({}, async () => Object.freeze(config)),
     emitError: error => listeners.get('agent/error')({ agent, error }) };
@@ -1247,4 +1247,35 @@ test('budget exhaustion inside an active host turn cancels without a whenIdle de
   assert.equal(f.host.scheduler.actionsAllowed, false);
   assert.equal(f.host.scheduler.snapshot().active, false);
   assert.equal(f.calls.filter(call => call[0] === 'followup').length, 1);
+});
+
+test('what she calls the user is set from the panel, cleaned, read at every request and kept across restart', async t => {
+  const f = await fixture(t);
+  assert.equal(f.host.status().userTitle, '你');
+  await f.host.control({ action: 'chat', text: '在吗' });
+  await f.host.scheduler.whenIdle();
+  const section = f.sections.find(item => item.name === 'companion:user-title');
+  assert.match(section.text, /\{\{companion_user_title\}\}/);
+  assert.notEqual(section.interpolate, false);
+  assert.equal(f.variables.get('companion_user_title')(), '你');
+  await f.host.control({ action: 'user-title', title: ' 主人{{x}}\n【' });
+  assert.equal(f.host.status().userTitle, '主人x');
+  assert.equal(f.variables.get('companion_user_title')(), '主人x', 'the open session picks up the new title');
+  await f.host.control({ action: 'user-title', title: '   ' });
+  assert.equal(f.host.status().userTitle, '你');
+  await f.host.control({ action: 'user-title', title: '阿明' });
+  const restarted = await fixture(t, { saved: JSON.parse(await readFile(f.stateFile, 'utf8')) });
+  assert.equal(restarted.host.status().userTitle, '阿明');
+  const prompt = JSON.parse(restarted.host.prompt({ kind: 'chat', messages: [{ content: '几点了' }] }).content[0].text);
+  assert.match(prompt.time, /\d{1,2}:\d{2}/, 'each turn carries the local time');
+});
+
+test('a reply keeps a valid voice tone, drops an unknown one and ignores a turn into the same tone', async t => {
+  const f = await fixture(t);
+  const shy = f.host.say('……才没有。', 'neutral', null, false, undefined, { tone: 'tsundere', toneEnd: 'shy' });
+  assert.deepEqual([shy.tone, shy.toneEnd], ['tsundere', 'shy']);
+  const same = f.host.say('嗯。', 'neutral', null, false, undefined, { tone: 'shy', toneEnd: 'shy' });
+  assert.deepEqual([same.tone, same.toneEnd], ['shy', undefined]);
+  const unknown = f.host.say('好。', 'neutral', null, false, undefined, { tone: 'shouting_loudly' });
+  assert.equal(unknown.tone, undefined);
 });

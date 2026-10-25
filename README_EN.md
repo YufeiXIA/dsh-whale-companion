@@ -27,7 +27,7 @@ The UI is in Chinese. The previews above use sample chats. Actual desktop and ga
 | Install | Set paths and a DSH profile (see below) | Installer or portable zip |
 | Chat, memory, conversations, check-ins, screen reading | Yes | Yes |
 | Feeding, edge peek, window perching, focus timers | Yes | Yes |
-| Voice | Not in the public version | Yes, with an Alibaba Bailian key |
+| Voice | Optional, with your own Fish Audio key | Yes, with an Alibaba Bailian key |
 | Slay the Spire 2 teammate | Yes (experimental) | No |
 | Size | Depends on your DSH and Electron | About 500 MB installed |
 
@@ -94,7 +94,7 @@ You need Windows 10/11, DSH Desktop (tested on 0.2.0-rc.2), PowerShell 7, and El
 3. Install the original plugin: `dsh plugin --profile companion-test add @luweiyabo/dsh-whale-pet`.
 4. Start her: `pwsh tools/start-whale-companion.ps1 -DesktopOnly`.
 
-There's no voice in the public build.
+For voice, use the public Fish Audio voice 「蓝色大肥鱼」 (made by Fish Audio user 大大大肥鱼): save your Fish Audio API key as `fish-audio-key.txt` in the data folder (default `~/.dsh/game-companion/`), restart DSH, then pick it under Sound in the panel. The free tier works. She changes her tone of voice to fit what you talk about.
 
 ## License
 

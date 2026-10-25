@@ -104,7 +104,7 @@ test('panel only voices fresh selected lines, skips busy/old lines and stops on 
   context.panel.disable();
   elements.get('preview-voice').onclick();
   assert.equal(requests.length, 2, 'explicit preview works without enabling automatic speech');
-  assert.deepEqual(JSON.parse(requests[1].body), { preview: true });
+  assert.deepEqual(JSON.parse(requests[1].body), { preview: true, voiceId: 'longhua' });
   completeAudio(); await flush();
   assert.equal(players[1].played, true);
   players[1].onended();
@@ -171,7 +171,7 @@ test('panel only voices fresh selected lines, skips busy/old lines and stops on 
   const voicePreference=preferences.get('companion-voice');
   for(const preset of ['gentle','happy','tsundere','serious']){
     elements.get('preview-'+preset).onclick();
-    assert.deepEqual(JSON.parse(requests.at(-1).body),{emotionPreview:preset});
+    assert.deepEqual(JSON.parse(requests.at(-1).body),{emotionPreview:preset,voiceId:'longhua'});
     now+=20000;
     completeAudio();await flush();
     assert.equal(players.at(-1).played,true,'Explicit audition remains playable after a slow synthesis');

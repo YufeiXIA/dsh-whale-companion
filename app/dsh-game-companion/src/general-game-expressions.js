@@ -16,16 +16,16 @@ export const generalGameExpressions = {
   rhythm_tap: '谈到节奏或音游，跟着打拍子',
   precision_aim: '认真商量瞄准和细调操作，不宣称已经命中',
   racing_turn: '谈到赛车或转向操作，专注压弯',
-  teammate_cheer: '给朋友加油，不表示已经获胜',
-  teammate_highfive: '已确认配合成功，邀请朋友击掌',
-  teammate_praise: '认可朋友已发生的好操作，给你点赞',
-  teammate_comfort: '朋友失落或输了，陪着缓一缓',
+  teammate_cheer: '给用户加油，不表示已经获胜',
+  teammate_highfive: '已确认配合成功，邀请用户击掌',
+  teammate_praise: '认可用户已发生的好操作，给你点赞',
+  teammate_comfort: '用户失落或输了，陪着缓一缓',
   waiting_hourglass: '耐心等匹配、等队友或等事情有变化',
   loading_bored: '等待加载有点无聊，不重复催促',
   low_battery: '用户提到或已观测到低电量才提醒，不虚构设备状态',
   new_record: '已确认刷新纪录，开心展示小彩带',
   loot_choice: '商量奖励和物品选择，不表示已经获得或使用',
-  ready_go: '朋友准备开始，确认准备好了，不擅自恢复游戏控制',
+  ready_go: '用户准备开始，确认准备好了，不擅自恢复游戏控制',
   ...personalityExpressions
 };
 

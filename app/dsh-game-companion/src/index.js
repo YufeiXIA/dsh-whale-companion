@@ -6,6 +6,7 @@ import { homedir } from 'node:os';
 import { CompanionScheduler } from './scheduler.js';
 import { TrialBudget } from './budget.js';
 import { CompanionVoice } from './voice.js';
+import { validTone } from './voice-tones.js';
 import { Sts2Adapter } from './sts2.js';
 import { installTools } from './tools.js';
 import { loadState, stateWriter } from './state.js';
@@ -25,6 +26,17 @@ import { chatAnimationHint, selectChatAnimation } from './chat-animation.js';
 import { guardRequest, newSessionToken, sessionFile } from './route-guard.js';
 
 export const name = 'dsh-game-companion';
+
+// What she calls the user to their face. Brackets and braces would break the prompt line.
+export function cleanUserTitle(value) {
+  return Array.from(String(value ?? '').replace(/[\s{}【】「」<>]/gu, '')).slice(0, 12).join('') || '你';
+}
+
+// "2026年10月25日 02:57 周日", so she knows when it is mealtime or late at night.
+export function localTime(at = Date.now()) {
+  const date = new Date(at);
+  return `${date.toLocaleString('zh-CN', { dateStyle: 'medium', timeStyle: 'short', hour12: false })} ${date.toLocaleDateString('zh-CN', { weekday: 'short' })}`;
+}
 export const inject = ['webServer', 'agents', 'tools', 'systemPrompt', 'sessions', 'sessionProjections', 'llm'];
 
 // Rebuilt by DSH from the original session log, including messages no longer in
@@ -102,6 +114,7 @@ export class CompanionHost {
     this.battleMemory = loadBattleMemory(this.restored.battleMemory);
     this.ambient = new AmbientCompanion(this.restored.ambient);
     if (!this.restored.memory) for (const message of this.messages) rememberPreference(this.memory, message);
+    this.userTitle = cleanUserTitle(this.restored.userTitle);
     this.chatDelivery = this.restored.chatDelivery ?? [];
     if (!Array.isArray(this.chatDelivery) || this.chatDelivery.some(message => !message ||
         typeof message.id !== 'string' || typeof message.text !== 'string' ||
@@ -245,6 +258,7 @@ export class CompanionHost {
     const mode = conversationMode(request);
     return { id, role: 'user', source: { kind: `plugin:${name}` }, content: [{ type: 'text', text: JSON.stringify({
       event: request.kind, mode, chat: request.messages,
+      time: localTime(),
       animation: chatAnimationHint(request.messages),
       ...(request.kind === 'ambient' ? { environment: this.ambientContext(request.environment) } : {}),
       memory: conversationContext(this.messages, this.memory, this.personalMemory),
@@ -255,15 +269,15 @@ export class CompanionHost {
       actions_allowed: this.scheduler.actionsAllowed,
       observation: this.scheduler.connected && mode !== 'chat' ? (request.observation ?? this.lastObservation) : null,
       response_style: request.kind === 'ambient'
-        ? '朋友已开启主动陪伴，希望你结合当前情境主动关心、好奇地搭话。用 companion_say 自然说一小段，通常60～160字、2～4句，最多240字；内容简单可以更短，不凑字数。spoken=true，配合情绪；实在没有合适话题或会重复时才保持沉默。company 是同一窗口的后续陪伴机会，换一个新角度，不重复上一句，也不催朋友回复。先接住当前画面中一个具体细节，再自然说出自己的小感受、联想、关心或好奇，最多接一个轻问题，不机械盘问。有 visual 时围绕确认可见的内容；可自然联系 memory 的最近对话、recent_screens 的近期回忆或 recent_game 的有效战况，但不要把每项都塞进一句话。没有 visual 时只结合程序类别和最近聊天，不编造屏幕细节。保持大肥鱼软乎乎、慢半拍、认真时可靠、有一点小嘴硬的语感；不用客服腔，不写舞台动作，不每次都提白饭。不播报程序名和监测状态，不假装看到正文/屏幕或知道输赢。普通开场只问兴趣或表示陪伴，不猜他卡住、没动、疲劳、烦恼或在熬夜，不夸大停留时间；只有long-focus事件才适合轻问要不要歇一歇。background 事件表示朋友刚在后台打开了 opened_in_background，可以就它随口聊一句，比如开了 Steam 问今天想玩什么、开了音乐软件问在听什么、开了别的 AI 助手可以有一点点好奇或小醋意；只知道开着，不知道具体内容。比如写代码时可问想不想一起理思路，浏览器里可问有没有有趣的东西；不是逐字照抄范句。不反复提醒休息，不连续追问。语气像突然想起来戳你一下的朋友：可以轻轻好奇、慢半拍、天然呆或一点嘴硬，像真人随口一句，不像通知；不要每次用哼或本鲸开头。说完结束，不加最终总结。'
+        ? '用户已开启主动陪伴，希望你结合当前情境主动关心、好奇地搭话。用 companion_say 自然说一小段，通常60～160字、2～4句，最多240字；内容简单可以更短，不凑字数。spoken=true，配合情绪；实在没有合适话题或会重复时才保持沉默。company 是同一窗口的后续陪伴机会，换一个新角度，不重复上一句，也不催用户回复。先接住当前画面中一个具体细节，再自然说出自己的小感受、联想、关心或好奇，最多接一个轻问题，不机械盘问。有 visual 时围绕确认可见的内容；可自然联系 memory 的最近对话、recent_screens 的近期回忆或 recent_game 的有效战况，但不要把每项都塞进一句话。没有 visual 时只结合程序类别和最近聊天，不编造屏幕细节。保持大肥鱼软乎乎、慢半拍、认真时可靠、有一点小嘴硬的语感；不用客服腔，不写舞台动作，不每次都提白饭。不播报程序名和监测状态，不假装看到正文/屏幕或知道输赢。普通开场只问兴趣或表示陪伴，不猜用户卡住、没动、疲劳、烦恼或在熬夜，不夸大停留时间；只有long-focus事件才适合轻问要不要歇一歇。background 事件表示用户刚在后台打开了 opened_in_background，可以就它随口聊一句，比如开了 Steam 问今天想玩什么、开了音乐软件问在听什么、开了别的 AI 助手可以有一点点好奇或小醋意；只知道开着，不知道具体内容。比如写代码时可问想不想一起理思路，浏览器里可问有没有有趣的东西；不是逐字照抄范句。不反复提醒休息，不连续追问。语气像突然想起来戳你一下的小伙伴：可以轻轻好奇、慢半拍、天然呆或一点嘴硬，像真人随口一句，不像通知；不要每次用哼或本鲸开头。说完结束，不加最终总结。'
         : request.messages.length
-        ? '接住朋友这句话，默认只用 companion_say 回一句自然的话，spoken=true（要求安静时 false），没有最低字数，最多100字。闲聊说完就结束，不附加总结、旧战况或重复详情；只有问题确实需要详细解释才补充最终文字。'
+        ? '接住用户这句话，默认只用 companion_say 回一句自然的话，spoken=true（要求安静时 false），没有最低字数，最多100字。闲聊说完就结束，不附加总结、旧战况或重复详情；只有问题确实需要详细解释才补充最终文字。'
         : '没有新的重要信息就直接结束。值得说时用 companion_say，spoken=true，最多100字，选符合话意的 emotion；不复述刚才的建议或等待状态。',
       instruction: request.kind === 'ambient'
         ? '只允许 companion_say 或保持沉默；禁止读取/操作游戏、设置任务、修改记忆。不要接着旧战况操作；用户发消息时这次主动搭话会让路。'
         : this.scheduler.connected
-        ? (mode === 'chat' ? '这轮先回应朋友，不主动读取游戏。若他实际要求游戏操作，先取得最新观察并遵守动作权限。暂停时只能聊天。' : '只使用本次观察的 versionKey 调用 game_act。等待其他玩家时结束本轮回复。暂停时可以聊天，不能操控游戏。')
-        : '当前没有连接游戏，和朋友正常聊天，回应他正在说的话。不能操作游戏，不把旧战况当成正在发生的事情。'
+        ? (mode === 'chat' ? '这轮先回应用户，不主动读取游戏。若用户实际要求游戏操作，先取得最新观察并遵守动作权限。暂停时只能聊天。' : '只使用本次观察的 versionKey 调用 game_act。等待其他玩家时结束本轮回复。暂停时可以聊天，不能操控游戏。')
+        : '当前没有连接游戏，和用户正常聊天，回应用户正在说的话。不能操作游戏，不把旧战况当成正在发生的事情。'
     }) }] };
   }
 
@@ -348,12 +362,15 @@ export class CompanionHost {
         setup: (scope, agent) => {
           installTools(scope, this);
           scope.systemPrompt.variable('cwd', () => this.directory);
+          scope.systemPrompt.variable('companion_user_title', () => this.userTitle);
           scope.tools.guard(() => {
             if (++this.toolCalls <= (this.ambientTurn ? 3 : 32)) return;
             void this.scheduler.pause('tool-call-limit');
             return 'Per-turn tool budget reached. Stop and wait.';
           });
           scope.systemPrompt.section({ name: 'companion:persona', order: 10300, text: `${base.join('\n')}\n${style}`, interpolate: false });
+          // Resolved at every request, so a new title applies without restarting the session.
+          scope.systemPrompt.section({ name: 'companion:user-title', order: 10301, text: '【称呼】当面叫用户时用「{{companion_user_title}}」。' });
           // Use DSH's request-config hook before its immutable request is built.
           scope.on('agent/request', async (_decision, next) => {
             const original = await next();
@@ -416,7 +433,7 @@ export class CompanionHost {
     try { return await this.creating; } finally { this.creating = null; }
   }
 
-  say(text, emotion = 'neutral', seq = null, requestSpeech = false, animation) {
+  say(text, emotion = 'neutral', seq = null, requestSpeech = false, animation, voiceTone = {}) {
     if (this.ambientTurn && (this.panelLineThisTurn || this.scheduler.active?.canceled ||
         !this.ambient.valid(this.replyRequest.environment))) return;
     const id = seq === null ? randomUUID() : `${this.sessionId}:${seq}`;
@@ -426,6 +443,9 @@ export class CompanionHost {
       !this.spokenThisTurn && (this.replyingToUser || at - this.lastSpokenAt >= 20000);
     if (spoken) { this.spokenThisTurn = true; this.lastSpokenAt = at; }
     const message = { id, role: 'assistant', text, emotion, seq, at, spoken };
+    const tone = validTone(voiceTone.tone), toneEnd = validTone(voiceTone.toneEnd);
+    if (tone) message.tone = tone;
+    if (tone && toneEnd && toneEnd !== tone) message.toneEnd = toneEnd;
     const clip = selectChatAnimation(this.replyRequest?.messages?.at(-1)?.content ?? '', animation);
     if (clip) message.animation = clip;
     this.messages.push(message);
@@ -457,7 +477,7 @@ export class CompanionHost {
         provider: this.config.provider ?? 'deepseek-official', model: this.config.model ?? 'deepseek-flash',
         sessionId: this.sessionId, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
       if (line && !controller.signal.aborted && !this.scheduler.active?.canceled) {
-        const spoken = this.say(line.text, line.emotion, null, true);
+        const spoken = this.say(line.text, line.emotion, null, true, undefined, line);
         if (spoken?.spoken) { original.detail = true; original.emotion = line.emotion; }
       }
     } catch (error) {
@@ -575,7 +595,7 @@ export class CompanionHost {
       contextMaintenance: this.contextMaintenance, decisionBudget: this.lastDecisionBudget ?? null,
       battleMemory: { completed: this.battleMemory.battles.length, active: this.battleMemory.active?.id ?? null,
         note: '复盘假设保持未验证；统计不代表胜率提升。' },
-      speechEditError: this.speechEditError,
+      speechEditError: this.speechEditError, userTitle: this.userTitle,
       error: this.turnError?.message ?? this.error };
   }
 
@@ -622,6 +642,11 @@ export class CompanionHost {
       const count = this.archivedConversations.length;
       this.archivedConversations = this.archivedConversations.filter(item => item.sessionId !== input.sessionId);
       if (this.archivedConversations.length === count) throw new Error('没有找到这段对话。');
+      await this.save();
+      return this.status();
+    }
+    if (input.action === 'user-title') {
+      this.userTitle = cleanUserTitle(input.title);
       await this.save();
       return this.status();
     }
@@ -708,7 +733,7 @@ export class CompanionHost {
     if (!this.adapter || !this.budget) return Promise.resolve();
     return this.writeState({ sessionId: this.sessionId, sessionCreated: Boolean(this.restored?.sessionCreated),
       archivedConversations: this.archivedConversations, conversationCreatedAt: this.conversationCreatedAt,
-      conversationTitle: this.conversationTitle,
+      conversationTitle: this.conversationTitle, userTitle: this.userTitle,
       memory: this.memory, personalMemory: this.personalMemory, runMemory: this.runMemory,
       battleMemory: this.battleMemory,
       ambient: this.ambient.save(),
@@ -886,8 +911,8 @@ export function apply(ctx, config = {}) {
             text: '听得到吗？我回来啦，这把陪你认真打。', emotion: 'happy_hop' }
         : host.messages.find(item => item.id === input.messageId && item.role === 'assistant');
       const audio = input.emotionPreview !== undefined
-        ? await host.voice.previewEmotion(input.emotionPreview, host.sessionId, controller.signal)
-        : await host.voice.speak(message, host.sessionId, controller.signal);
+        ? await host.voice.previewEmotion(input.emotionPreview, host.sessionId, controller.signal, input.voiceId)
+        : await host.voice.speak(message, host.sessionId, controller.signal, null, input.voiceId);
       if (controller.signal.aborted) return;
       res.writeHead(200, { 'content-type': audio.mimeType, 'cache-control': 'no-store',
         'x-companion-voice': audio.voice });
