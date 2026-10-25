@@ -77,7 +77,7 @@
 <table>
 <tr>
 <td align="center"><img src="docs/media/desktop-perch-real.gif" width="360" alt="爬上演示窗口并停在顶部"><br>爬上窗口</td>
-<td align="center"><img src="docs/media/desktop-stroll-real.gif" width="360" alt="沿屏幕底部移动"><br>屏幕底部散步（未拍到任务栏本体）</td>
+<td align="center"><img src="docs/media/desktop-stroll-real.gif" width="360" alt="沿屏幕底部移动"><br>屏幕底部散步 </td>
 </tr>
 <tr>
 <td align="center"><img src="docs/media/desktop-edge-real.gif" width="360" alt="停靠真实屏幕右边，半身说话"><br>贴边后保持半身说话</td>
