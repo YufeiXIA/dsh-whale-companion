@@ -145,3 +145,26 @@ test('status explains cooldown and companion focus without mistaking passive use
   assert.equal(Object.hasOwn(f.ambient.save(),'waitingReason'),false);
   f.ambient.configure(false);assert.equal(f.ambient.status().waitingReason,'disabled');
 });
+
+test('an app opened in the background becomes one topic; the starting set and disabled setting do not',()=>{
+  const f=fixture();
+  const step=(background,ms=10000)=>{f.advance(ms);return f.ambient.sample({available:true,app:'code',idleMs:0,background});};
+  step(['browser','steam']);
+  let event=null;for(let i=0;i<6&&!event;i++)event=step(['browser','steam']);
+  assert.equal(event.kind,'application');
+  assert.deepEqual(event.background,['浏览器','Steam']);
+  assert.equal(event.openedInBackground,null,'apps already open at start are not news');
+  f.ambient.attempted(event);
+  step(['browser','steam','music']);
+  event=null;for(let i=0;i<40&&!event;i++)event=step(['browser','steam','music']);
+  assert.equal(event.kind,'background');
+  assert.equal(event.openedInBackground,'音乐软件');
+  f.ambient.attempted(event);
+  event=null;for(let i=0;i<40&&!event;i++)event=step(['browser','steam','music']);
+  assert.equal(event.kind,'company','the same opened app is not raised twice');
+  assert.throws(()=>step(['notepad']),/Invalid desktop activity sample/);
+  f.ambient.configure(true,{backgroundEnabled:false});
+  event=null;for(let i=0;i<60&&!event;i++)event=step(['browser','steam','music','discord']);
+  assert.deepEqual(event.background,[]);
+  assert.equal(new AmbientCompanion(f.ambient.save()).backgroundEnabled,false);
+});

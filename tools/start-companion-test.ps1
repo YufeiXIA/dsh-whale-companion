@@ -2,6 +2,15 @@ param([ValidateSet('human','whale')][string]$Slot = 'whale', [switch]$Headless, 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'companion-config.ps1')
 $instance = Join-Path $root "app\companion-test\$Slot"
+# FMOD uses the game's own mixer; Godot's Dummy audio driver does not mute it.
+if ($Slot -eq 'whale' -and $Headless) {
+    $settingsFile = Join-Path $instance 'roaming\SlayTheSpire2\default\1\settings.save'
+    if (Test-Path -LiteralPath $settingsFile) {
+        $settings = Get-Content -LiteralPath $settingsFile -Raw | ConvertFrom-Json
+        $settings.volume_master = 0.0
+        $settings | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $settingsFile -Encoding utf8
+    }
+}
 $info = [System.Diagnostics.ProcessStartInfo]::new()
 $info.FileName = Join-Path $instance 'SlayTheSpire2.exe'
 $info.WorkingDirectory = $instance

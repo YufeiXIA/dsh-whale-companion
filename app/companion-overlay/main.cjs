@@ -218,6 +218,7 @@ async function pickPoint(){
     pointRoute=planPoint(win.getBounds(),screen.getDisplayNearestPoint(point).workArea,point,petScale);
     setFacing(pointRoute.direction);
     win.webContents.send('companion-point-run');
+    return true;
   }finally{pointSelecting=false;}
 }
 
@@ -395,7 +396,8 @@ async function start() {
     lastActivityApp = sample.available ? sample.app : undefined;
     lastActivityWindow=sample.available?sample.windowId:undefined;
     const result=await request('/game-companion/control', {action:'ambient-sample',sample:sample.available?
-      {available:true,app:sample.app,idleMs:sample.idleMs,contextKey:activityContext,captureSupported:Date.now()>=quietState.visionPausedUntil}:{available:false}});
+      {available:true,app:sample.app,idleMs:sample.idleMs,contextKey:activityContext,captureSupported:Date.now()>=quietState.visionPausedUntil,
+        background:Array.isArray(sample.background)?sample.background:[]}:{available:false}});
     if(result.capture)await screenCapture.capture(result.capture.ticket,await inspectActivity(true));
     return result;
   } });

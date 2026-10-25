@@ -35,6 +35,29 @@ public static class WhaleActivity {
 '@
 # Physical pixels, so the overlay can convert window rectangles on mixed-DPI setups.
 [void][WhaleActivity]::SetProcessDpiAwarenessContext([IntPtr]-4)
+# Background apps: only these allow-listed kinds leave the script, never process names or titles.
+# Tray apps count while running; the rest only with an open window, so helper processes do not.
+$trayKinds = [ordered]@{
+    steam = '^steam$'; discord = '^Discord$'; wechat = '^(WeChat|Weixin)$'; qq = '^(QQ|QQNT)$'
+    music = '^(Spotify|cloudmusic|QQMusic|KuGou|kwmusic)$'; obs = '^obs64$'; download = '^(Thunder|qbittorrent|BitComet|IDMan)$'
+}
+$windowKinds = [ordered]@{
+    code = '^(Code|Code - Insiders|devenv|idea64|pycharm64|notepad\+\+|Cursor)$'; documents = '^(WINWORD|EXCEL|POWERPNT|Acrobat|AcroRd32|Obsidian|Typora)$'
+    browser = '^(msedge|chrome|firefox|brave|vivaldi)$'; media = '^(vlc|mpv|PotPlayerMini64|wmplayer)$'; terminal = '^WindowsTerminal$'
+    ai = '^(Claude|ChatGPT|Codex)$'; epic = '^EpicGamesLauncher$'; sts2 = '^(SlayTheSpire2|Slay the Spire 2|sts2)$'; sts = '^SlayTheSpire$'; stardew = '^Stardew Valley$'
+}
+function Get-BackgroundKinds {
+    $kinds = [System.Collections.Generic.SortedSet[string]]::new()
+    foreach ($process in Get-Process) {
+        $name = $process.ProcessName
+        foreach ($kind in $trayKinds.Keys) { if ($name -match $trayKinds[$kind]) { [void]$kinds.Add($kind) } }
+        if ($process.MainWindowHandle -ne [IntPtr]::Zero) {
+            foreach ($kind in $windowKinds.Keys) { if ($name -match $windowKinds[$kind]) { [void]$kinds.Add($kind) } }
+        }
+    }
+    return $kinds
+}
+$background = @(); $backgroundTick = 0
 do {
     $sample = @{ available = $false }
     $desktopHandle = [WhaleActivity]::OpenInputDesktop(0, $false, 1)
@@ -115,6 +138,12 @@ do {
         if ($Diagnostic) { [Console]::Error.WriteLine($_.Exception.GetType().Name + ': ' + $_.Exception.Message) }
     }
     finally { if ($desktopHandle -ne [IntPtr]::Zero) { [void][WhaleActivity]::CloseDesktop($desktopHandle) } }
+    if ($sample.available) {
+        # Refreshed every 30 s; the foreground app is already reported on its own.
+        if ($Once -or $backgroundTick % 15 -eq 0) { try { $background = @(Get-BackgroundKinds) } catch { $background = @() } }
+        $backgroundTick++
+        $sample.background = @($background | Where-Object { $_ -ne $sample.app })
+    }
     if ($Diagnostic) { [Console]::Error.WriteLine('Desktop=' + $desktopName + '; foregroundAvailable=' + ($windowHandle -ne [IntPtr]::Zero)) }
     $sample | ConvertTo-Json -Compress
     if (-not $Once) { Start-Sleep -Seconds 2 }
