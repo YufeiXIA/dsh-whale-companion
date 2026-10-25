@@ -8,6 +8,14 @@
 
 [English](README_EN.md)
 
+<table>
+<tr>
+<td align="center"><img src="docs/media/chat.gif" width="260" alt="她冒出来打招呼，又被抓到偷吃"><br>打招呼、偷吃被抓</td>
+<td align="center"><img src="docs/media/edge-peek.gif" width="260" alt="贴在屏幕右边，露半个身子往里看"><br>贴在屏幕边偷看</td>
+<td align="center"><img src="docs/media/sts2-companion.gif" width="260" alt="打牌时出主意、举盾、赢了得意"><br>陪你打《杀戮尖塔 2》</td>
+</tr>
+</table>
+
 </div>
 
 > [!IMPORTANT]
@@ -40,7 +48,17 @@
 - 性格慢半拍、有点嘴硬，人设在 `app/dsh-game-companion/persona/companion.md`。
 - 记得你说过的偏好，不想让她记的可以在面板里删掉。
 - 可以开多个对话，能导出成 Markdown。
-- 可以让她隔一阵主动找你说句话（默认关）。她只知道你在用哪类程序，比如写代码、浏览器、游戏，看不到窗口标题和内容。你两次没理她，她就不说了。
+- 可以让她隔一阵主动找你说句话（默认关）。她知道你在用哪类程序，比如写代码、浏览器、游戏，看不到窗口标题。另开了看屏幕，才会看主屏最上层的画面。
+
+点她就能打开聊天面板：
+
+<table>
+<tr>
+<td align="center"><img src="docs/media/panel-chat.png" width="240" alt="聊天面板"><br>聊天</td>
+<td align="center"><img src="docs/media/panel-settings.png" width="240" alt="陪伴设置"><br>陪伴节奏、看屏幕开关</td>
+<td align="center"><img src="docs/media/profile-card.png" width="240" alt="人物小卡"><br>点头像翻开小档案</td>
+</tr>
+</table>
 
 桌面上：
 
@@ -54,7 +72,16 @@
 - 开启主动陪伴后，阅读或看视频时也会结合当前程序类别、已授权的截图寻找话题。键鼠空闲不会单独让她静音；每次没回复，下次间隔在所选基础上累加 5 分钟，回复后恢复。
 - 久坐、喝水、凌晨还没睡时提醒你，每种都能单独关。
 
-游戏：在《杀戮尖塔 2》本地合作局里当你的队友，边打边聊。还在试验阶段，配置见 [`sts2-bridge/README.md`](sts2-bridge/README.md)。
+游戏：在《杀戮尖塔 2》本地合作局里操控一个角色，当你的队友，边打边聊。还在试验阶段：自动打牌能过几个房间，还没和真人完整打过一局。配置见 [`sts2-bridge/README.md`](sts2-bridge/README.md)。
+
+<table>
+<tr>
+<td align="center"><img src="docs/media/sts2-chat.png" width="240" alt="打精英怪时的聊天记录"><br>边打边商量</td>
+<td align="center"><img src="docs/media/sts2-companion.gif" width="300" alt="想牌、举盾、赢了得意"><br>想牌 → 举盾 → 赢了</td>
+</tr>
+</table>
+
+上面的图都是用示范对话录的，不是真实聊天记录，也还没有实机对局画面。
 
 ## 隐私
 

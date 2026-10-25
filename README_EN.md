@@ -2,6 +2,21 @@
 
 A whale-maid who lives on your desktop, chats with you, remembers what you tell her, and can join you in *Slay the Spire 2* co-op. She runs on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH). Full docs are in Chinese: [README.md](README.md).
 
+<table>
+<tr>
+<td align="center"><img src="docs/media/chat.gif" width="260" alt="She greets you, then gets caught snacking"><br>Greeting, caught snacking</td>
+<td align="center"><img src="docs/media/edge-peek.gif" width="260" alt="Docked on the right edge, peeking in"><br>Peeking from the screen edge</td>
+<td align="center"><img src="docs/media/sts2-companion.gif" width="260" alt="Planning a card, raising a shield, a smug win"><br><i>Slay the Spire 2</i> teammate</td>
+</tr>
+<tr>
+<td align="center"><img src="docs/media/panel-chat.png" width="240" alt="Chat panel"><br>Chat panel</td>
+<td align="center"><img src="docs/media/panel-settings.png" width="240" alt="Companion settings"><br>Check-in rhythm and screen toggle</td>
+<td align="center"><img src="docs/media/sts2-chat.png" width="240" alt="Chatting during a fight"><br>Talking through a fight</td>
+</tr>
+</table>
+
+The UI is in Chinese. These were recorded with sample chats, not real history or a real match.
+
 > Non-commercial fan work. The character and animations can't be used commercially. Not affiliated with DeepSeek or Mega Crit.
 
 ## Credits
