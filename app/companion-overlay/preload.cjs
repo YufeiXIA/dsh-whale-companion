@@ -22,6 +22,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   bar.append(hint, toggle, close); document.querySelector('.companion-card').prepend(bar);
   const initialNativeState=await ipcRenderer.invoke('companion-window', 'state');
   if(initialNativeState.platform==='darwin'){
+    document.getElementById('stroll-label').textContent='沿屏幕底部散步';
     document.getElementById('mac-permissions').hidden=false;
     const status=document.getElementById('mac-permission-status');
     async function permission(action='status'){

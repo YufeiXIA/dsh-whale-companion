@@ -7,15 +7,17 @@ test('selection consumes one point, rejects foreign IPC and tears down every cap
   class Window {
     constructor(bounds){this.bounds=bounds;this.closed=false;this.webContents={id:++id,mainFrame:{},setWindowOpenHandler(){},on(){}};}
     setMenu(){} on(){} async loadFile(){} setAlwaysOnTop(){} showInactive(){} focus(){}
+    setVisibleOnAllWorkspaces(visible,options){this.spaces={visible,options};}setHiddenInMissionControl(){}
     getBounds(){return this.bounds;}isDestroyed(){return this.closed;}destroy(){this.closed=true;}
   }
   const displays=[{bounds:{x:-1000,y:0,width:1000,height:800}},{bounds:{x:0,y:0,width:1200,height:900}}];
-  const picker=createPointPicker({BrowserWindow:Window,ipcMain:{handle(_name,fn){handler=fn;}},screen:{
+  const picker=createPointPicker({platform:'darwin',BrowserWindow:Window,ipcMain:{handle(_name,fn){handler=fn;}},screen:{
     getAllDisplays:()=>displays,getCursorScreenPoint:()=>({x:10,y:10}),getDisplayNearestPoint:()=>displays[1]
   }});
   const pending=picker.pick();await new Promise(resolve=>setImmediate(resolve));
   const windows=[...picker.windows.values()],first=windows[0];
   assert.equal(windows.length,2);
+  assert.ok(windows.every(window=>window.spaces.visible&&window.spaces.options.visibleOnFullScreen));
   assert.throws(()=>handler({sender:{id:999},senderFrame:{}},{x:10,y:20}),/Unknown/);
   const event={sender:first.webContents,senderFrame:first.webContents.mainFrame};
   assert.throws(()=>handler(event,{x:Infinity,y:20}),/Invalid/);

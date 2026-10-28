@@ -389,8 +389,8 @@ function loginItem(){
   return {path:pwsh,args:['-NoProfile','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',path.join(root,'tools/start-whale-companion.ps1'),'-DesktopOnly']};
 }
 function focusChat(){setClickThrough(false);win.show();win.setAlwaysOnTop(true,'screen-saver');win.focus();win.webContents.send(edge?'companion-focus-quick':'companion-focus-chat');}
-function buildTray(){
-  if(smoke||win.isDestroyed())return;
+function buildTray(force=false){
+  if((smoke&&!force)||win.isDestroyed())return;
   if(!tray){
     const icon=process.platform==='darwin'?nativeImage.createFromPath(path.join(__dirname,'assets/whale-gaming-icon-v3.png')).resize({width:18,height:18}):path.join(__dirname,'assets/whale-gaming-v3.ico');
     tray=new Tray(icon);tray.setToolTip('大肥鱼');
@@ -409,7 +409,7 @@ function buildTray(){
     {label:'爬到当前窗口上',click:()=>void perchOnWindow()},
     {label:'躲到屏幕边偷看',click:hideAtEdge},
     {label:desktopPrefs.sleeping?'叫醒小鲸':'睡眠模式',type:'checkbox',checked:Boolean(desktopPrefs.sleeping),click:send('sleep')},
-    {label:'沿着任务栏散步',type:'checkbox',checked:desktopPrefs.stroll,enabled:!desktopPrefs.sleeping,click:send('stroll')},
+    {label:process.platform==='darwin'?'沿屏幕底部散步':'沿着任务栏散步',type:'checkbox',checked:desktopPrefs.stroll,enabled:!desktopPrefs.sleeping,click:send('stroll')},
     ...(process.platform==='darwin'?[{label:'macOS 权限',submenu:[
       {label:'允许看屏幕',click:()=>void desktopPermissions.perform('screen')},
       {label:'允许窗口停靠',click:()=>void desktopPermissions.perform('accessibility')},
@@ -691,7 +691,9 @@ async function start() {
   await win.loadURL(view);
   if (releaseCheck) {
     win.setOpacity(0);showWithoutFocus();
-    await require('../../lite/release-check.cjs')({win,output,standalone:Boolean(lite)});
+    if(process.platform==='darwin')buildTray(true);
+    const macNative=process.platform==='darwin'?{menuBarReady:!!tray&&!tray.isDestroyed(),allWorkspaces:win.isVisibleOnAllWorkspaces(),dockHidden:!app.dock.isVisible()}:null;
+    await require('../../lite/release-check.cjs')({win,output,standalone:Boolean(lite),macNative});
     allowClose=true;win.close();
   } else if (sleepCheck) {
     win.setOpacity(0);showWithoutFocus();

@@ -1,7 +1,7 @@
 const path=require('node:path');
 
 // A temporary mouse-capture surface. The selected click never reaches the app underneath.
-function createPointPicker({BrowserWindow,ipcMain,screen}) {
+function createPointPicker({BrowserWindow,ipcMain,screen,platform=process.platform}) {
   const windows=new Map();
   let finish=null;
   function cancel(){settle(null);}
@@ -31,7 +31,10 @@ function createPointPicker({BrowserWindow,ipcMain,screen}) {
             show:false,alwaysOnTop:true,skipTaskbar:true,resizable:false,hasShadow:false,
             webPreferences:{preload:path.join(__dirname,'point-picker-preload.cjs'),sandbox:true,contextIsolation:true,nodeIntegration:false}});
           const id=picker.webContents.id;windows.set(id,picker);
-          picker.setMenu(null);
+          if(platform==='darwin'){
+            picker.setVisibleOnAllWorkspaces(true,{visibleOnFullScreen:true,skipTransformProcessType:true});
+            picker.setHiddenInMissionControl(true);
+          }else picker.setMenu(null);
           picker.webContents.setWindowOpenHandler(()=>({action:'deny'}));
           picker.webContents.on('will-navigate',event=>event.preventDefault());
           picker.on('closed',()=>{if(windows.has(id))cancel();});

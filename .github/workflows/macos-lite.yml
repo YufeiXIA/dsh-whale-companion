@@ -50,7 +50,9 @@ jobs:
           app = apps[0]
           executable = app / 'Contents/MacOS/WhaleCompanion'
           helper = app / 'Contents/Resources/app/tools/macos/WhaleNativeBridge'
-          results = {'platform': platform.platform(), 'machine': platform.machine(), 'app': str(app), 'checks': []}
+          results = {'platform': platform.platform(), 'machine': platform.machine(), 'app': str(app), 'checks': [],
+                     'sourceCommit': os.environ['GITHUB_SHA'], 'signature': 'ad-hoc', 'notarized': False,
+                     'runUrl': f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"}
           def check(args, timeout=30, env=None):
               process = subprocess.run([str(arg) for arg in args], text=True, capture_output=True, timeout=timeout, env=env)
               result = {'command': [str(arg) for arg in args], 'returncode': process.returncode,
@@ -65,6 +67,17 @@ jobs:
           check(['codesign', '--verify', '--deep', '--strict', '--verbose=2', app])
           check(['codesign', '--verify', '--strict', '--verbose=2', helper])
           check([helper, '--self-test'])
+          allowed_fields = {'available', 'permissionRequired', 'app', 'idleMs', 'windowId', 'sensitive',
+                            'fullscreen', 'captureOverlay', 'coordinateSpace', 'background', 'rect', 'screenBounds'}
+          results['nativeMetadata'] = []
+          for args in [['sample'], ['sample', '--primary']]:
+              sample = json.loads(check([helper, *args]))
+              assert set(sample).issubset(allowed_fields), sample
+              assert isinstance(sample['available'], bool), sample
+              if sample['available']:
+                  assert sample['coordinateSpace'] == 'dip'
+                  assert sample['app'] in {'code', 'documents', 'browser', 'media', 'sts2', 'sts', 'stardew', 'desktop', 'companion', 'other'}
+              results['nativeMetadata'].append(sample)
           env = dict(os.environ, WHALE_RELEASE_CHECK_DIR=str((proof / 'fresh-user-data').resolve()))
           check([executable, '--release-check'], timeout=90, env=env)
           release_proof = proof / 'fresh-user-data/runtime/release-check.json'

@@ -26,7 +26,7 @@
 
 ## 验证状态
 
-当前文档阶段：**GitHub macOS arm64 CI 构建和运行检查待完成，尚无成功产物验收记录**。发布前需按实际执行结果更新本段，并附上 `Mac-build-validation.json`；未执行项不得写成通过。
+已在 GitHub 的 macOS 15 Apple Silicon 构建机完成 JavaScript 测试、Swift 编译与原生桥接自检，生成 DMG/ZIP；通过主程序和辅助程序 arm64 架构检查、包内 ad-hoc 签名验证，以及全新数据目录中的打包应用启动、设置、素材 HTTP 路由和睡眠视频解码检查。成功记录见 [构建历史](https://github.com/YufeiXIA/dsh-whale-companion/actions/workflows/macos-lite.yml)，本次发布另附 `Mac-build-validation.json`，包含实际构建提交与逐项结果。检查没有模型密钥，不调用聊天或在线语音服务。
 
 验证边界：自动化单元检查、Swift 编译、签名检查、包结构检查或隔离启动，仅能支持各自检查到的行为。即使这些项目通过，也不能宣称已完成真实用户 Mac 的全功能验收。尚需真实 Mac 检查模型与在线语音服务、权限首次拒绝及撤销、窗口移动与最小化、Retina 多屏、Spaces/全屏切换、登录项和跨版本升级。仓库现有演示 GIF 仍是 Windows 录制，不是这次 Mac 的实机证明。
 
