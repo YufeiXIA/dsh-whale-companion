@@ -18,9 +18,10 @@ module.exports=async function({win,output}){
   const clips=[];
   const natural=new Set(['listening_nod','bright_idea','relieved','controller_play','card_strategy',...naturalGameExpressions]);
   for(const emotion of [...natural,'shield_ready','potion_offer','map_route','loot_proud',...Object.keys(generalGameExpressions).filter(name=>!natural.has(name))]){
-    await js(`petAnimator.update({scheduler:{paused:true},messages:[{id:${JSON.stringify(emotion)},role:'assistant',emotion:${JSON.stringify(emotion)},at:Date.now()}]});void 0;`);
+    // Explicit manual actions can preview game props without inventing a live battle.
+    await js(`petAnimator.perform(${JSON.stringify('companion/')}+${JSON.stringify(emotion)});void 0;`);
     const playing=()=>js(`(()=>{const v=document.getElementById('pet');return v.src.includes('/animations/${emotion}.webm')&&v.currentTime>.2&&!v.paused;})()`);
-    await wait(playing,emotion+' chat playback');
+    await wait(playing,emotion+' manual playback');
     const actual=await js("(()=>{const v=document.getElementById('pet');return {width:v.videoWidth,height:v.videoHeight,layers:document.querySelectorAll('video.pet-layer').length};})()");
     assert.equal(actual.width,640);assert.equal(actual.height,360);assert.equal(actual.layers,2);
     await js("document.getElementById('pet').currentTime=4;void 0;");
@@ -29,9 +30,9 @@ module.exports=async function({win,output}){
     await js("document.getElementById('pet').currentTime=document.getElementById('pet').duration-.08;void 0;");
     // Idle now rotates across the daily catalog; it is no longer always breathing.
     await wait(()=>js(`(()=>{const v=document.getElementById('pet');return !v.src.includes('/animations/${emotion}.webm')&&v.currentTime>0&&!v.paused;})()`),emotion+' return to natural idle');
-    clips.push({emotion,...actual,chatTriggered:true,returnedToNaturalIdle:true});
+    clips.push({emotion,...actual,manualTriggered:true,returnedToNaturalIdle:true});
     await js("petAnimator.desktop(false,[],false);void 0;");
   }
   await writeFile(path.join(output,'new-animations-check.json'),JSON.stringify({completed:true,clips,
-    note:'Real Electron assets, decode, chat emotion events and return to naturally selected idle; no paid model or voice requests. Random natural-pool selection is covered by unit tests.'},null,2));
+    note:'Real Electron assets, decode, explicit manual actions and return to naturally selected idle; no paid model or voice requests. Semantic chat selection and random natural-pool selection are covered by unit tests.'},null,2));
 };
