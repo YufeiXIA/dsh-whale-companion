@@ -2,7 +2,7 @@
 
 A whale-maid who lives on your desktop, chats with you, remembers what you tell her, and can join you in *Slay the Spire 2* co-op. She runs on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH). Full docs are in Chinese: [README.md](README.md).
 
-[Download Windows 0.2.0](https://github.com/YufeiXIA/dsh-whale-companion/releases/tag/v0.2.0) · [Latest release](https://github.com/YufeiXIA/dsh-whale-companion/releases/latest) · [Release notes](docs/release-0.2.0.md) · [macOS feasibility and next milestone](docs/macos-port.md)
+[Download Windows 0.2.0](https://github.com/YufeiXIA/dsh-whale-companion/releases/tag/v0.2.0) · [Mac 0.3.0-macos.1 prerelease](https://github.com/YufeiXIA/dsh-whale-companion/releases/tag/v0.3.0-macos.1) · [Mac installation and permissions](docs/macos-port.md) · [Windows release notes](docs/release-0.2.0.md)
 
 <table>
 <tr>
@@ -34,11 +34,15 @@ The UI is in Chinese. The previews above use sample chats. Actual desktop and ga
 | Voice | Streaming Fish Audio chat; other voices require an external adapter | Alibaba Bailian; see the Lite setup guide |
 | Slay the Spire 2 teammate | Yes (experimental) | No |
 | Stardew Valley adapter | Experimental integration and mod source; actual farming unverified | No |
-| Distribution | Source package; bring DSH, Electron and the original animation plugin | Windows x64 installer and portable ZIP |
+| Distribution | Windows source package; bring DSH, Electron and the original animation plugin | Windows x64 installer and portable ZIP; Apple Silicon Mac prerelease DMG / ZIP |
 
 Pick Lite for a desktop pet you can chat with; pick Full if you want her to play games with you.
 
-Choose `WhaleCompanion-Lite-0.2.0-Setup.exe` for installation, or `WhaleCompanion-Lite-0.2.0-Portable.zip` to extract and run. `WhaleCompanion-Full-0.2.0-Source.zip` contains source and requires the Full setup below. `SHA256SUMS.txt` accompanies the downloads. This release supports Windows; there is no macOS build yet.
+Windows stable remains 0.2.0. Choose `WhaleCompanion-Lite-0.2.0-Setup.exe` for installation, or `WhaleCompanion-Lite-0.2.0-Portable.zip` to extract and run. `WhaleCompanion-Full-0.2.0-Source.zip` requires the Full setup below. `SHA256SUMS.txt` accompanies these downloads.
+
+Mac Lite 0.3.0-macos.1 is a separate prerelease for **macOS 13+ on Apple Silicon (M-series)**. Intel builds are not provided. Download `WhaleCompanion-Lite-0.3.0-macos.1-macOS-arm64.dmg`, copy **大肥鱼.app** to **Applications**, then open it there. The ZIP contains the same app. This prerelease is ad-hoc signed, without an Apple Developer ID signature or notarization. If Gatekeeper blocks first launch, try opening the app once, then use **System Settings → Privacy & Security → Open Anyway** for that app after checking its source; see [Apple's instructions](https://support.apple.com/102445). The app's menu bar icon opens chat and settings. Basic chat requires neither Screen Recording nor Accessibility: Screen Recording is optional for automatic screen viewing; Accessibility is optional for window perching. Permission changes can require quitting and reopening the app.
+
+Mac data lives in `~/Library/Application Support/大肥鱼/`: `state.json` stores local chats and settings, while `secrets.json` holds keys encrypted through Electron safeStorage and the macOS Keychain. Keychain may prompt again after an ad-hoc signed update; CI does not establish upgrade persistence. See [Mac feature parity and validation status](docs/release-0.3.0-macos.1.md) and [installation details](docs/macos-port.md). Full DSH/game integrations remain Windows-only. The Mac prerelease leaves [Windows 0.2.0 as the latest stable release](https://github.com/YufeiXIA/dsh-whale-companion/releases/latest).
 
 ## Credits
 

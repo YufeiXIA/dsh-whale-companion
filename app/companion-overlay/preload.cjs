@@ -21,6 +21,23 @@ window.addEventListener('DOMContentLoaded', async () => {
   close.onclick = () => ipcRenderer.invoke('companion-window', 'close');
   bar.append(hint, toggle, close); document.querySelector('.companion-card').prepend(bar);
   const initialNativeState=await ipcRenderer.invoke('companion-window', 'state');
+  if(initialNativeState.platform==='darwin'){
+    document.getElementById('mac-permissions').hidden=false;
+    const status=document.getElementById('mac-permission-status');
+    async function permission(action='status'){
+      try{
+        const result=await ipcRenderer.invoke('companion-window','mac-permissions',action);
+        status.textContent=`屏幕录制：${result.screen==='granted'?'已允许':'未允许'} · 窗口停靠：${result.accessibility?'已允许':'未允许'}。聊天无需授权；修改系统权限后可能需要退出再打开。`;
+      }catch{status.textContent='权限状态暂时不可用，可以从菜单栏的 macOS 权限入口打开系统设置。';}
+    }
+    document.getElementById('mac-screen-permission').onclick=()=>void permission('screen');
+    document.getElementById('mac-window-permission').onclick=()=>void permission('accessibility');
+    document.getElementById('mac-screen-settings').onclick=()=>void permission('screen-settings');
+    document.getElementById('mac-window-settings').onclick=()=>void permission('accessibility-settings');
+    window.addEventListener('companion-request-vision-permission',()=>void permission('screen'));
+    window.addEventListener('focus',()=>void permission());
+    void permission();
+  }
   window.addEventListener('companion-activity', event => { void ipcRenderer.invoke('companion-window', 'activity', event.detail === true); });
   ipcRenderer.on('companion-activity-invalid',()=>window.dispatchEvent(new CustomEvent('companion-activity-invalid')));
   // The panel announced these before this script attached, so seed them from its saved settings.

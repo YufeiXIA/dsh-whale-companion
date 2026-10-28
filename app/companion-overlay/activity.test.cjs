@@ -43,10 +43,12 @@ test('native helper is hidden, singleton, coalesces samples and closes with the 
     launch(exe, args, options) {
       launches++;
       assert.equal(options.windowsHide, true);
-      assert.ok(args.includes('-NoProfile')); assert.ok(args.at(-1).endsWith('companion-activity.ps1'));
+      assert.ok(exe.endsWith('WhaleNativeBridge'));
+      assert.deepEqual(args, ['activity', '--exclude-process', '42']);
       child = new EventEmitter(); child.stdout = new PassThrough(); child.kill = () => kills++;
       return child;
     },
+    platform: 'darwin', excludeProcessId: 42,
     async publish(sample) {
       received.push(sample);
       if (received.length === 1) await new Promise(resolve => { release = resolve; });

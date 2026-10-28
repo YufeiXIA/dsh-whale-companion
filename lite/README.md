@@ -4,7 +4,7 @@
 
 ## 下载
 
-在 [Windows 0.2.0 发布页](https://github.com/YufeiXIA/dsh-whale-companion/releases/tag/v0.2.0)里挑一个（[最新版本](https://github.com/YufeiXIA/dsh-whale-companion/releases/latest)）：
+Windows 稳定版在 [0.2.0 发布页](https://github.com/YufeiXIA/dsh-whale-companion/releases/tag/v0.2.0)里挑一个（[最新稳定版](https://github.com/YufeiXIA/dsh-whale-companion/releases/latest)）：
 
 - `WhaleCompanion-Lite-0.2.0-Setup.exe`：Windows x64 安装版，会建桌面快捷方式。
 - `WhaleCompanion-Lite-0.2.0-Portable.zip`：Windows x64 免安装版，解压后双击 `WhaleCompanion.exe`。
@@ -14,7 +14,22 @@
 
 更新前退出旧版本，保留原数据目录；免安装版解压到新文件夹再启动。启动异常时可先检查是否完整解压、安装目录是否可读，并在 issue 中提供脱敏后的报错。不要上传 Key、`secrets.json` 或私人聊天记录。
 
-完整更新见 [0.2.0 说明](../docs/release-0.2.0.md)。当前没有 macOS 下载包，后续路线见 [macOS 移植评估](../docs/macos-port.md)。
+Windows 完整更新见 [0.2.0 说明](../docs/release-0.2.0.md)。
+
+### Apple Silicon Mac 预发布
+
+[Mac 0.3.0-macos.1 发布页](https://github.com/YufeiXIA/dsh-whale-companion/releases/tag/v0.3.0-macos.1)，适用 **macOS 13+、Apple Silicon（M 系列）**；没有 Intel 构建。Mac 预发布与 Windows 稳定版分别发布。
+
+| 文件 | 用途 |
+|---|---|
+| `WhaleCompanion-Lite-0.3.0-macos.1-macOS-arm64.dmg` | 打开后把「大肥鱼.app」拖进「应用程序」 |
+| `WhaleCompanion-Lite-0.3.0-macos.1-macOS-arm64.zip` | 解压后把同一个应用移到「应用程序」 |
+| `SHA256SUMS-macOS-arm64.txt` | Mac 发布文件的 SHA-256 校验值 |
+| `Mac-build-validation.json` | 构建与自动化检查结果；不代表真实用户完整验收 |
+
+先退出旧版，再将应用放到 `/Applications` 后打开，不要长期从 DMG 里运行。此预发布使用 ad-hoc 签名，没有 Apple Developer ID 签名和公证。若首次打开被拦截，先尝试打开一次，再到「系统设置 → 隐私与安全性 → 仍要打开」对这个应用确认，步骤见 [Apple 官方说明](https://support.apple.com/102445)。
+
+启动后在菜单栏鲸鱼图标里打开聊天、设置或退出。基础聊天不需要屏幕录制或辅助功能权限；想启用自动看屏，再授予屏幕录制；想让她爬窗口，再授予辅助功能。应用内的权限入口可以打开对应系统设置；授权后按系统提示退出并重开。详细步骤、功能对照和验收范围见 [Mac 安装与权限](../docs/macos-port.md)及 [Mac 更新说明](../docs/release-0.3.0-macos.1.md)。
 
 ## 第一次打开
 
@@ -24,7 +39,7 @@
 2. 粘贴 API Key，点「测试一下」。
 3. 提示模型不对，就点「获取模型列表」挑一个。
 
-以后想改，点聊天面板上的「设置」，或者右键托盘图标选「模型与语音设置」。
+以后想改，点聊天面板上的「设置」，或者在托盘（Mac 为菜单栏）图标里选「模型与语音设置」。
 
 - **语音**（可选）：填阿里百炼的 API Key 她就能出声，再点面板上的喇叭打开。她会按聊的内容换语气。默认模型和音色是作者自己在用的；测试提示模型或音色不对，就换成你在百炼控制台开通的。
 - 轻便版在线语音使用设置页中的阿里百炼 Qwen 模型与音色，不提供完整版的 Fish PCM 流式聊天或 Momo 声线选择。本地互动短语音不需要在线语音 Key。
@@ -46,10 +61,12 @@
 
 ## 数据存在哪
 
-都在 `%APPDATA%\大肥鱼\`：
+Windows 在 `%APPDATA%\大肥鱼\`，Mac 在 `~/Library/Application Support/大肥鱼/`：
 
-- `secrets.json`：API Key，用你的 Windows 账户加密，面板里只显示末 4 位。
+- `secrets.json`：API Key，通过 Electron `safeStorage` 加密；Windows 使用账户凭据，Mac 使用系统 Keychain，面板里只显示末 4 位。
 - `state.json`：设置、聊天记录、她记住的事。
+
+Mac 可能弹出钥匙串访问提示。此预发布只有 ad-hoc 签名，更新后可能再次请求钥匙串权限；当前检查不保证不同构建间凭据始终可读。先保留数据目录；不要把 Windows 的加密 `secrets.json` 当作可直接搬到 Mac 的 Key 备份，应在新系统重新输入自己的 Key。说明见 [Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage)。
 
 原始图片只在内存里处理，文字观察摘要可随聊天保存。删除对话与删除独立偏好是两件事；「忘记」用于排除模型回忆，不等于擦除磁盘原文。详细数据流与拦截边界见 [SECURITY.md](../SECURITY.md)。
 
@@ -57,7 +74,7 @@
 
 ## 自己打包
 
-需要 Node 22+ 和 Electron 44 的 Windows x64 解压目录。
+Windows 构建需要 Node 22+ 和 Electron 44 的 Windows x64 解压目录。
 
 ```bash
 cd lite && npm install && npm test && npm run build
@@ -67,6 +84,8 @@ cd lite && npm install && npm test && npm run build
 - `WHALE_PET_SOURCE`：解压好的原版插件目录；不填就用 `npm pack` 下载 `@luweiyabo/dsh-whale-pet@0.1.3`。
 
 安装包和压缩包在 `outputs/lite-dist/`。
+
+Mac 构建在 macOS 上执行，使用对应的 Electron arm64 和 Swift/Xcode 工具链；GitHub Actions 目标为 `macos-15` arm64。具体命令和输出以 [Mac 构建说明](../docs/macos-port.md#从源码构建)为准，Windows 构建命令不能直接生成 Mac 原生辅助程序。
 
 ## 素材
 

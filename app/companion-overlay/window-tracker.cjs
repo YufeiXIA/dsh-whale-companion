@@ -1,15 +1,14 @@
 const { spawn } = require('node:child_process');
 const { createInterface } = require('node:readline');
-const path = require('node:path');
+const { trackerCommand } = require('./native-platform.cjs');
 
-function createWindowTracker({ root, excludeProcessId, update, launch = spawn }) {
+function createWindowTracker({ root, excludeProcessId = process.pid, update, launch = spawn, platform = process.platform }) {
   let child = null, serial = 0;
   const pending = new Map();
   function start() {
     if (child) return;
-    const process = launch(path.join(global.process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(root, 'tools/companion-window-tracker.ps1'),
-        '-ExcludeProcessId', String(excludeProcessId)], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+    const command = trackerCommand(root, { platform, excludeProcessId });
+    const process = launch(command.file, command.args, { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
     child = process;
     const lines = createInterface({ input: process.stdout });
     lines.on('line', line => {

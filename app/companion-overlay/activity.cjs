@@ -1,8 +1,8 @@
 const { spawn } = require('node:child_process');
 const { createInterface } = require('node:readline');
-const path = require('node:path');
+const { activityCommand } = require('./native-platform.cjs');
 
-function createActivitySensor({ root, publish, launch = spawn }) {
+function createActivitySensor({ root, publish, launch = spawn, platform = process.platform, excludeProcessId = process.pid }) {
   let child = null, closed = false, retryAfter = 0;
   let pending = null, latest = null;
   function send(sample) {
@@ -25,9 +25,8 @@ function createActivitySensor({ root, publish, launch = spawn }) {
         return;
       }
       if (Date.now() < retryAfter) return;
-      const process = launch(path.join(global.process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
-        ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(root, 'tools/companion-activity.ps1')],
-        { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+      const command = activityCommand(root, { platform, excludeProcessId });
+      const process = launch(command.file, command.args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
       child = process;
       const lines = createInterface({ input: process.stdout });
       lines.on('line', line => {

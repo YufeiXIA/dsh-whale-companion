@@ -46,10 +46,18 @@ DSH 自带的登录管不到插件的接口，所以插件自己加了一道检�
 
 ## 轻便版
 
-- API Key 用你的 Windows 账户加密，存在 `%APPDATA%\大肥鱼\secrets.json`。面板只拿到末 4 位，聊天记录和日志里都没有。
+- API Key 通过 Electron `safeStorage` 加密，Windows 使用账户凭据保护，文件在 `%APPDATA%\大肥鱼\secrets.json`；Mac 使用系统 Keychain，文件在 `~/Library/Application Support/大肥鱼/secrets.json`。面板只拿到末 4 位。聊天、设置与偏好另存为同目录的 `state.json`，该文件不是加密聊天保险箱。不要公开上传整个数据目录。
 - 聊天和看图发给你在设置里填的服务；语音发给你配置的语音服务。看图单独填了地址时，不会把聊天的 Key 发过去。
 - 接口地址必须是 https，本机地址除外。
 - 本机接口和上面一样要随机令牌，只是令牌只在内存里，不写文件。
+
+### Mac 可选权限与签名
+
+Mac 轻便版的基础聊天、手动选图、动画与本地互动不要求屏幕录制或辅助功能权限。自动看屏仍需先在应用内开启，并取得 macOS「屏幕录制」（部分系统称「屏幕与系统音频录制」）权限；只申请权限不代表自动看屏已开启。窗口停靠另需「辅助功能」，仅在主动启用相关功能时提示。系统设置位置分别见 Apple 的[屏幕录制权限](https://support.apple.com/guide/mac-help/control-access-to-screen-and-system-audio-recording-mchld6aa7d23/mac)和[辅助功能权限](https://support.apple.com/guide/mac-help/allow-accessibility-apps-to-access-your-mac-mh43185/mac)说明。
+
+自动截图路径在权限不足、无法确认目标元数据、窗口变化或敏感窗口遮挡等情况下跳过本次观察，不改截别的屏幕，也不继续发送待处理截图。此行为的实现与自动化检查不能替代真实 Mac 上的权限撤销、Spaces、遮挡和多屏验收；当前证据范围见 [Mac 发布说明](docs/release-0.3.0-macos.1.md)。窗口标题仍只用于本机过滤，不作为模型上下文。
+
+0.3.0-macos.1 使用 ad-hoc 签名，没有 Apple Developer ID 签名及 Apple 公证。首次打开可能需要按 Apple 的[单应用「仍要打开」流程](https://support.apple.com/102445)确认。不要为运行它关闭整个系统的 Gatekeeper。`safeStorage` 的 Mac 加密依赖 Keychain；不同的 ad-hoc 构建可能再次请求访问，不能把一次 CI 读写通过当作升级后凭据一定保留的证据。Electron 对此的限制见 [safeStorage 文档](https://www.electronjs.org/docs/latest/api/safe-storage)。
 
 ## 报告漏洞
 

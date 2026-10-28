@@ -8,7 +8,12 @@ function fixture(){
   const process=new EventEmitter();process.stdout=new PassThrough();process.stdin=new PassThrough();
   process.kill=()=>process.emit('exit');const commands=[],events=[];
   process.stdin.on('data',chunk=>commands.push(chunk.toString()));
-  const tracker=createWindowTracker({root:'test-root',excludeProcessId:42,update:event=>events.push(event),launch:()=>process});
+  const tracker=createWindowTracker({root:'test-root',excludeProcessId:42,platform:'darwin',update:event=>events.push(event),launch:(file,args,options)=>{
+    assert.ok(file.endsWith('WhaleNativeBridge'));
+    assert.deepEqual(args,['tracker','--exclude-process','42']);
+    assert.deepEqual(options.stdio,['pipe','pipe','ignore']);
+    return process;
+  }});
   const emit=event=>process.stdout.write(JSON.stringify(event)+'\n');
   return {tracker,process,commands,events,emit};
 }

@@ -11,7 +11,7 @@ if (releaseCheck) {
 const data = app.getPath('userData');
 const output = path.join(data, 'runtime');
 
-// API keys are encrypted with the Windows account (DPAPI) and never sent to the panel.
+// API keys use the OS credential system (Keychain on Mac, DPAPI on Windows); the panel only gets a hint.
 function secretStore(file) {
   const values = new Map();
   try {

@@ -1,0 +1,100 @@
+name: macOS Lite arm64
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [macos-lite-arm64]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: lite/package-lock.json
+      - name: Confirm native Apple silicon runner
+        run: |
+          test "$(uname -m)" = arm64
+          test "$RUNNER_ARCH" = ARM64
+          sw_vers
+          xcrun swiftc --version
+      - name: Install pinned build tools
+        working-directory: lite
+        run: npm ci
+      - name: Test host, overlay and Lite
+        run: |
+          node --test app/dsh-game-companion/test/*.test.js
+          node --test app/companion-overlay/*.test.cjs
+          npm --prefix lite test
+      - name: Build native helper, app, DMG and ZIP
+        working-directory: lite
+        run: npm run build:mac
+      - name: Verify signed bundle, arm64 binaries and packaged release check
+        shell: python
+        run: |
+          import hashlib, json, os, pathlib, platform, subprocess
+          dist = pathlib.Path('outputs/lite-dist-mac-arm64')
+          proof = pathlib.Path('outputs/macos-lite-validation')
+          proof.mkdir(parents=True, exist_ok=True)
+          apps = list((dist / 'mac-arm64').glob('*.app'))
+          assert len(apps) == 1, apps
+          app = apps[0]
+          executable = app / 'Contents/MacOS/WhaleCompanion'
+          helper = app / 'Contents/Resources/app/tools/macos/WhaleNativeBridge'
+          results = {'platform': platform.platform(), 'machine': platform.machine(), 'app': str(app), 'checks': []}
+          def check(args, timeout=30, env=None):
+              process = subprocess.run([str(arg) for arg in args], text=True, capture_output=True, timeout=timeout, env=env)
+              result = {'command': [str(arg) for arg in args], 'returncode': process.returncode,
+                        'stdout': process.stdout, 'stderr': process.stderr}
+              results['checks'].append(result)
+              (proof / 'validation.json').write_text(json.dumps(results, indent=2))
+              assert process.returncode == 0, result
+              return process.stdout
+          for binary in [executable, helper]:
+              check(['file', binary])
+              assert check(['lipo', '-archs', binary]).strip() == 'arm64'
+          check(['codesign', '--verify', '--deep', '--strict', '--verbose=2', app])
+          check(['codesign', '--verify', '--strict', '--verbose=2', helper])
+          check([helper, '--self-test'])
+          env = dict(os.environ, WHALE_RELEASE_CHECK_DIR=str((proof / 'fresh-user-data').resolve()))
+          check([executable, '--release-check'], timeout=90, env=env)
+          release_proof = proof / 'fresh-user-data/runtime/release-check.json'
+          assert release_proof.exists(), 'Packaged app did not write release-check.json'
+          results['releaseCheck'] = json.loads(release_proof.read_text())
+          packages = sorted([*dist.glob('*.dmg'), *dist.glob('*.zip')])
+          version = json.loads(pathlib.Path('lite/package.json').read_text())['version']
+          assert {item.name for item in packages} == {
+              f'WhaleCompanion-Lite-{version}-macOS-arm64.dmg',
+              f'WhaleCompanion-Lite-{version}-macOS-arm64.zip'}
+          checksums = []
+          for package in packages:
+              with package.open('rb') as handle:
+                  digest = hashlib.file_digest(handle, 'sha256').hexdigest()
+              checksums.append(f'{digest}  {package.name}')
+          (dist / 'SHA256SUMS-macOS-arm64.txt').write_text('\n'.join(checksums) + '\n')
+          results['packages'] = [package.name for package in packages]
+          results['passed'] = True
+          (proof / 'validation.json').write_text(json.dumps(results, indent=2))
+      - name: Upload packages and validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: whale-companion-lite-macos-arm64
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            outputs/lite-dist-mac-arm64/*.dmg
+            outputs/lite-dist-mac-arm64/*.zip
+            outputs/lite-dist-mac-arm64/SHA256SUMS-macOS-arm64.txt
+            outputs/macos-lite-validation/validation.json
+            outputs/macos-lite-validation/fresh-user-data/runtime/release-check.json
+            outputs/macos-lite-validation/fresh-user-data/runtime/release-check.png

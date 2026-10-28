@@ -1,4 +1,4 @@
-const { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, Menu, screen, shell, Tray } = require('electron');
+const { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, systemPreferences, Tray } = require('electron');
 const { readFile, mkdir, rm } = require('node:fs/promises');
 const path = require('node:path');
 const { planRoam, planPoint, roamPosition, compactFooter } = require('./roaming.cjs');
@@ -8,6 +8,8 @@ const { createGameLifecycle } = require('./game-lifecycle.cjs');
 const { createActivitySensor } = require('./activity.cjs');
 const { createWindowTracker } = require('./window-tracker.cjs');
 const { createScreenCapture } = require('./screen-capture.cjs');
+const { activityCommand } = require('./native-platform.cjs');
+const { windowRect, createDesktopPermissions } = require('./macos-desktop.cjs');
 const { edgeSnap } = require('./edge-snap.cjs');
 const { floorY, quickChatY, strollRoute, perchRoute, perchFailure, perchKeepsVisible, stepFall, createHealthClock } = require('./desktop-life.cjs');
 const execFile=require('node:util').promisify(require('node:child_process').execFile);
@@ -54,10 +56,10 @@ let edge=null,edgeX=null,tucked=false,slideTimer=null,slideTarget=null,desktopMo
 let lastSampleWindow=null,ambientWanted=false,forwarded=false,lastForwardAt=0,perch=null,perchPending=null,windowTracker,perchRequest=0;
 let hiddenForFullscreen=false,fullscreenOverride=null,desktopPrefs={stroll:false,fullscreenHide:true};
 const health=createHealthClock();
+const desktopPermissions=createDesktopPermissions({systemPreferences,desktopCapturer,openExternal:url=>shell.openExternal(url)});
 async function inspectActivity(primary=false) {
-  const {stdout}=await execFile(path.join(process.env.SystemRoot,'System32/WindowsPowerShell/v1.0/powershell.exe'),
-    ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(root,'tools/companion-activity.ps1'),'-Once',...(primary?['-PrimaryWindow','-ExcludeProcessId',String(process.pid)]:[])],
-    {windowsHide:true,timeout:5000});
+  const command=activityCommand(root,{once:true,primary,excludeProcessId:process.pid});
+  const {stdout}=await execFile(command.file,command.args,{windowsHide:true,timeout:5000});
   return JSON.parse(stdout.replace(/^\uFEFF/,''));
 }
 async function gameProcess(action,onlyIfHumanAbsent=false) {
@@ -111,7 +113,7 @@ function perchBlocked(){
   return null;
 }
 function perchGeometry(sample,anchor=null){
-  const rect=sample?.rect&&screen.screenToDipRect(null,sample.rect);
+  const rect=windowRect(sample,screen);
   const display=rect&&screen.getDisplayMatching(rect).bounds;
   const reason=perchFailure(rect,display,petScale);
   return {reason,route:reason?null:perchRoute(win.getBounds(),rect,display,petScale,anchor)};
@@ -124,6 +126,10 @@ async function perchOnWindow(){
     showWithoutFocus();
   }
   const blocked=perchBlocked();if(blocked){perchNotice(blocked);return false;}
+  if(process.platform==='darwin'&&!desktopPermissions.status().accessibility){
+    const permission=await desktopPermissions.perform('accessibility');
+    if(!permission.accessibility){perchNotice('请在系统设置的「隐私与安全性 → 辅助功能」里允许大肥鱼，再叫我爬上去吧。');return false;}
+  }
   const attempt=++perchRequest,generation=motionGeneration;
   try{
     const [state,target]=await Promise.all([request('/game-companion/state'),windowTracker.select()]);
@@ -325,7 +331,7 @@ async function request(route, body, timeoutMs=8000) {
   return response.json();
 }
 
-function nativeState() { return { clickThrough, toggleAvailable, focusAvailable, desktopLaunch:process.argv.includes('--desktop-companion') }; }
+function nativeState() { return { clickThrough, toggleAvailable, focusAvailable, platform:process.platform, desktopLaunch:process.argv.includes('--desktop-companion') }; }
 function showWithoutFocus() {
   win.showInactive();
   win.setAlwaysOnTop(true, 'screen-saver');
@@ -376,6 +382,7 @@ async function closeSafely(onPaused) {
 }
 
 function loginItem(){
+  if(process.platform==='darwin')return {};
   if(lite)return {path:process.execPath,args:app.isPackaged?[]:[app.getAppPath()]};
   // The launcher needs PowerShell 7; Windows PowerShell 5.1 misreads the UTF-8 script.
   const pwsh=config.pwshExe||path.join(process.env.ProgramFiles??'C:\\Program Files','PowerShell/7/pwsh.exe');
@@ -385,11 +392,12 @@ function focusChat(){setClickThrough(false);win.show();win.setAlwaysOnTop(true,'
 function buildTray(){
   if(smoke||win.isDestroyed())return;
   if(!tray){
-    tray=new Tray(path.join(__dirname,'assets/whale-gaming-v3.ico'));tray.setToolTip('大肥鱼');
+    const icon=process.platform==='darwin'?nativeImage.createFromPath(path.join(__dirname,'assets/whale-gaming-icon-v3.png')).resize({width:18,height:18}):path.join(__dirname,'assets/whale-gaming-v3.ico');
+    tray=new Tray(icon);tray.setToolTip('大肥鱼');
     tray.on('click',()=>{showWithoutFocus();buildTray();});
   }
   const time=Date.now(),send=command=>()=>{if(!win.isDestroyed())win.webContents.send('companion-tray',command);};
-  const login=require('node:fs').existsSync(loginItem().path)?app.getLoginItemSettings(loginItem()):null;
+  const login=process.platform==='darwin'||require('node:fs').existsSync(loginItem().path)?app.getLoginItemSettings(loginItem()):null;
   tray.setContextMenu(Menu.buildFromTemplate([
     {label:'打开聊天',click:focusChat},
     ...(lite?[{label:'模型与语音设置',click:()=>{focusChat();send('settings')();}}]:[]),
@@ -402,6 +410,12 @@ function buildTray(){
     {label:'躲到屏幕边偷看',click:hideAtEdge},
     {label:desktopPrefs.sleeping?'叫醒小鲸':'睡眠模式',type:'checkbox',checked:Boolean(desktopPrefs.sleeping),click:send('sleep')},
     {label:'沿着任务栏散步',type:'checkbox',checked:desktopPrefs.stroll,enabled:!desktopPrefs.sleeping,click:send('stroll')},
+    ...(process.platform==='darwin'?[{label:'macOS 权限',submenu:[
+      {label:'允许看屏幕',click:()=>void desktopPermissions.perform('screen')},
+      {label:'允许窗口停靠',click:()=>void desktopPermissions.perform('accessibility')},
+      {label:'屏幕录制设置',click:()=>void desktopPermissions.perform('screen-settings')},
+      {label:'辅助功能设置',click:()=>void desktopPermissions.perform('accessibility-settings')}
+    ]}]:[]),
     {type:'separator'},
     {label:quietState.focusUntil>time?'结束专注':'专注 25 分钟',click:send('focus')},
     {label:quietState.quietUntil>time?'取消免打扰':'免打扰 1 小时',click:send('quiet')},
@@ -440,7 +454,7 @@ async function start() {
   // Older builds kept frames on disk; frames now live only in memory.
   await rm(path.join(output,'screen-cache'),{recursive:true,force:true});
   screenCapture = createScreenCapture({onCapture:()=>{if(win&&!win.isDestroyed())win.webContents.send('companion-vision-capture');},
-    isAllowed:()=>ambientWanted&&Date.now()-activityHeartbeat<=20000&&Date.now()>=quietState.visionPausedUntil,
+    isAllowed:()=>ambientWanted&&Date.now()-activityHeartbeat<=20000&&Date.now()>=quietState.visionPausedUntil&&desktopPermissions.screenAllowed(),
     getSources:options=>desktopCapturer.getSources(options),inspect:()=>inspectActivity(true),getPrimaryDisplay:()=>screen.getPrimaryDisplay(),
     upload:body=>request('/game-companion/vision',body,18000)});
   let lastActivityApp,lastActivityWindow,activityContext=0;
@@ -474,8 +488,17 @@ async function start() {
     width: 300, height: 412, minWidth: 300, minHeight: 412,
     frame: false, show: false, resizable: false, alwaysOnTop: true, transparent: true, hasShadow: false, backgroundColor: '#00000000',
     title: '鲸鱼合作搭子', webPreferences: { preload: path.join(__dirname, 'preload.cjs'),
-      contextIsolation: true, sandbox: true, nodeIntegration: false, partition: 'persist:companion-overlay' } });
-  win.setMenu(null);
+      contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling:process.platform!=='darwin', partition: 'persist:companion-overlay' } });
+  if(process.platform==='darwin'){
+    app.dock?.hide();
+    win.setVisibleOnAllWorkspaces(true,{visibleOnFullScreen:true,skipTransformProcessType:true});
+    win.setHiddenInMissionControl(true);
+  }
+  if(process.platform==='darwin')Menu.setApplicationMenu(Menu.buildFromTemplate([
+    {label:'大肥鱼',submenu:[{role:'about'},{type:'separator'},{role:'hide'},{role:'hideOthers'},{role:'unhide'},{type:'separator'},{role:'quit'}]},
+    {role:'editMenu'},{role:'windowMenu'}
+  ]));
+  else win.setMenu(null);
   windowTracker=createWindowTracker({root,excludeProcessId:process.pid,update:followPerch});
   if(!smoke)windowTracker.start();
   win.setContentProtection(false);
@@ -523,6 +546,7 @@ async function start() {
     if(win.isDestroyed())return;
     if (event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) throw new Error('Unknown window');
     if (action === 'state') return nativeState();
+    if (action === 'mac-permissions') return desktopPermissions.perform(value);
     if (action === 'quick-hover') {hoverQuickChat(value===true);return;}
     if (action === 'quick-focus') {
       if(quickWasClickThrough===null)quickWasClickThrough=clickThrough;
@@ -796,4 +820,5 @@ app.on('second-instance', (_event,args) => {
   }
 });
 app.on('window-all-closed', () => app.quit());
+app.on('activate',()=>{if(win&&!win.isDestroyed())showWithoutFocus();});
 app.on('will-quit', () => {tray?.destroy();clearEdge();windowTracker?.close();screenCapture?.close();void activitySensor?.close();clearTimeout(gameTimer);clearInterval(inertiaTimer);globalShortcut.unregisterAll();});

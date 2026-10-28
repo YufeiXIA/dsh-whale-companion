@@ -1,13 +1,14 @@
 {
   "name": "whale-companion-lite",
-  "version": "0.2.0",
+  "version": "0.3.0-macos.1",
   "private": true,
   "description": "大肥鱼桌宠轻便版：不用 DSH，填好模型 Key 就能聊天",
   "author": "Yufei Xia",
   "main": "main.cjs",
   "scripts": {
     "test": "node --test",
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "build:mac": "node scripts/build.mjs --mac --arm64"
   },
   "devDependencies": {
     "electron-builder": "26.17.0"

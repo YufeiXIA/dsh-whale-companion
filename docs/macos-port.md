@@ -1,28 +1,75 @@
-# macOS 版本可行性与下一阶段范围
+# Mac 轻便版：安装、权限与功能范围
 
-可以继续做 macOS 版。聊天、记忆、图片输入、网页界面和动画主要由 Node.js、浏览器 API 与 Electron 组成，可以复用大部分现有逻辑。当前 0.2.0 下载和构建脚本仍是 Windows 版本，尚未生成或验证 macOS 应用。
+0.3.0-macos.1 是独立轻便版的 Apple Silicon 预发布，目标为 **macOS 13+、M 系列 Mac**。界面主要为中文，不需要 DSH；Intel Mac、完整版 DSH 启动和游戏控制不在这次发布范围内。Windows 最新稳定版仍为 0.2.0。
 
-建议先移植**独立轻便版**：桌宠显示、聊天、记忆、图片输入、语音、睡眠和设置形成一个可运行的 Mac 版本，再补窗口跟随等系统能力。完整版还依赖 DSH 的安装与启动流程，需要另外验证。
+本页描述本次移植的使用方式与功能范围。构建及自动化检查仍需完成，不能据此宣称已在用户真实 Mac 上完整验收；最新证据见 [Mac 发布说明](release-0.3.0-macos.1.md)。本仓库现有实机 GIF 都来自 Windows。
 
-## 需要替换或验证的部分
+## 下载安装
 
-| 当前实现 | macOS 工作 |
+1. 打开 [v0.3.0-macos.1 预发布页](https://github.com/YufeiXIA/dsh-whale-companion/releases/tag/v0.3.0-macos.1)，下载 `WhaleCompanion-Lite-0.3.0-macos.1-macOS-arm64.dmg`。不便使用 DMG 时可选同名 `.zip`。
+2. 打开 DMG，把「大肥鱼.app」拖到「应用程序」；ZIP 则解压后移到 `/Applications`。退出 DMG，再从「应用程序」打开。更新前先退出旧版，保留数据目录。
+3. 此包使用 ad-hoc 签名，没有 Apple Developer ID 签名，也没有 Apple 公证。若系统拦截，先尝试打开一次，再在「系统设置 → 隐私与安全性」里对这个应用选择「仍要打开」，按提示确认。使用前确认来源为本项目发布页；步骤依据 [Apple 官方说明](https://support.apple.com/102445)。无需关闭整个系统的 Gatekeeper。
+4. 首次设置里选择模型服务商，输入自己的 API Key，点击「测试一下」。语音、识图服务分别按 [轻便版设置](../lite/README.md#第一次打开)配置。
+5. 菜单栏鲸鱼图标提供打开聊天、设置、睡眠/唤醒与退出入口。关闭聊天面板后，桌宠仍可继续运行；完全退出请使用菜单栏中的退出命令。
+
+发布页另附 `SHA256SUMS-macOS-arm64.txt` 和 `Mac-build-validation.json`。校验值用于检查下载内容一致性，不代表应用已通过 Apple 公证或完整功能验收。
+
+## 可选系统权限
+
+基础聊天、记忆、手动选择图片、动画及本地互动无需以下两个权限。请按实际使用的功能授权；系统权限与应用内的自动看屏开关相互独立。
+
+| 想用什么 | 需要什么 | 去哪里设置 |
+|---|---|---|
+| 自动看主屏当前窗口 | 屏幕录制；应用内也需开启自动看屏 | 系统设置 → 隐私与安全性 → 屏幕录制，部分系统名为「屏幕与系统音频录制」 |
+| 爬窗口并跟随位置、缩放及隐藏状态 | 辅助功能 | 系统设置 → 隐私与安全性 → 辅助功能 |
+| 普通聊天、手动发图、语音、拖动与贴边 | 无上述权限要求 | 在应用里配置服务与开关即可 |
+
+设置面板及菜单栏中的权限入口可打开系统设置。授权、更换应用副本或撤销权限后，macOS 可能要求退出并重新打开应用。Apple 的[屏幕录制权限](https://support.apple.com/guide/mac-help/control-access-to-screen-and-system-audio-recording-mchld6aa7d23/mac)和[辅助功能权限](https://support.apple.com/guide/mac-help/allow-accessibility-apps-to-access-your-mac-mh43185/mac)说明列出了系统管理方式。
+
+自动看屏默认关闭，原图只在内存中处理。采集目标仍限定为主屏最上层窗口的可见区域；权限不足、元数据不完整、目标发生变化或敏感窗口遮挡时，跳过本次截图，不改截副屏。屏幕权限未授予时，普通程序类别采样仍可使用，不以空白窗口标题代替敏感内容检查。敏感过滤依赖可取得的系统信息与规则，无法保证识别所有敏感画面。详情见 [SECURITY.md](../SECURITY.md)。
+
+## 与 Windows 轻便版对照
+
+下表说明共用功能和 Mac 适配方式，**不是逐项实机通过记录**。Mac 验证状态统一见 [发布说明](release-0.3.0-macos.1.md#验证状态)。
+
+| 功能 | Mac 0.3.0-macos.1 范围 |
 |---|---|
-| Electron 透明浮窗、动画、托盘、快捷键 | 复用界面与资源，实测置顶、焦点、点透、菜单栏图标、Spaces、全屏应用和多屏坐标 |
-| PowerShell / C# 的 Win32 活动采样与窗口句柄追踪 | 提供 macOS 原生适配层；分别处理前台程序类别、窗口位置、移动/缩放/最小化/关闭事件，保留最小数据采集范围 |
-| 主屏可见区域截图与敏感窗口过滤 | 适配 macOS 窗口元数据和坐标；接入屏幕录制授权，验证拒绝、撤销、暂停和目标变化时不会继续发送图像 |
-| Windows 账户加密的 API Key 与 AppData 路径 | 使用 Electron 的系统凭据能力和 Mac 用户数据目录；实测重启、升级与签名变化后的访问行为 |
-| `.ps1` 启动入口、`electron.exe` 检测、NSIS / Windows ZIP | 新增 `.app` 构建与 DMG / ZIP 发布流程，选择并验证 Apple Silicon 与 Intel 支持范围 |
-| Windows 本地语音/外部适配器路径 | 本地音频资源可复用；云端语音需检查网络、解码及播放中断；外部适配器单独确认兼容性 |
+| 聊天、独立偏好、多会话、历史关键词摘录 | 沿用轻便版服务和界面；无 DSH 历史分页工具或内置联网检索 |
+| 手动发图、独立识图配置 | 沿用轻便版实现，不要求系统屏幕录制权限 |
+| 阿里百炼 Qwen 在线语音、本地互动短语音 | 沿用设置与播放路径；在线服务仍需用户自己的 Key、音色及额度 |
+| 回复动作、喂饭、摸头、睡眠与手动唤醒 | 共用动画、互动与持久化睡眠逻辑 |
+| 主动陪伴、程序类别、提醒与免打扰 | Mac 原生活动适配；窗口标题只在本机参与过滤，不送模型 |
+| 拖动、甩动、贴边、自由走动、底部散步 | 共用移动逻辑，采用 Electron 逻辑坐标；Retina 和混合缩放多屏仍需实机验收 |
+| 爬窗口与窗口跟随 | Swift 原生辅助程序与 Accessibility；拒绝权限时停用该能力 |
+| 自动看屏 | macOS 屏幕录制授权、主屏可见区域和截图前后复核 |
+| 托盘、Spaces、全屏与多屏 | Mac 菜单栏入口及浮窗适配；不同显示器、桌面空间与全屏应用组合仍需实机验收 |
+| 开机自启 | 提供 Mac 登录项入口；ad-hoc 签名下的注册和跨更新行为需用户确认 |
+| 游戏控制与完整版 DSH 集成 | 本次没有移植 |
 
-窗口追踪应按实际所需能力申请辅助功能权限；首次聊天无需为了尚未启用的窗口功能预先取得该权限。Electron 提供 [辅助功能信任状态查询](https://www.electronjs.org/docs/latest/api/system-preferences#systempreferencesistrustedaccessibilityclientprompt-macos)，原生窗口实现与权限范围仍需在 Mac 上设计和验证。
+## 数据、更新与卸载
 
-自动看屏在 Mac 上还受系统的屏幕录制权限控制。Electron 的 [desktopCapturer 文档](https://www.electronjs.org/docs/latest/api/desktop-capturer)说明截图需要用户同意，权限状态可由 [systemPreferences](https://www.electronjs.org/docs/latest/api/system-preferences#systempreferencesgetmediaaccessstatusmediatype-windows-macos) 查询；Apple 的 [ScreenCaptureKit 示例](https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-in-macos?language=objc)也演示了首次授权。默认关闭、主屏范围、可见内容裁剪、敏感内容拦截和内存处理等现有约束应一并保留。
+默认用户数据目录为 `~/Library/Application Support/大肥鱼/`，与应用所在位置分开：
 
-## 发布与验收
+- `state.json` 保存聊天、设置与记忆；它不是加密存档。
+- `secrets.json` 保存由 Electron `safeStorage` 加密的 API Key，Mac 密钥由系统 Keychain 管理。面板只显示末 4 位。不同 ad-hoc 构建可能被系统视作不同应用，更新后可能再次出现钥匙串授权；见 [Electron safeStorage 文档](https://www.electronjs.org/docs/latest/api/safe-storage)。一次构建读写通过不证明升级后永远可读。
 
-正式分发应准备稳定的应用标识、Apple Developer 签名身份、签名与公证流程。Electron 的 [macOS 签名说明](https://www.electronjs.org/docs/latest/tutorial/code-signing#signing--notarizing-macos-builds)列出了开发者账号、macOS 上的 Xcode 和证书准备；Apple 说明了[分发签名](https://developer.apple.com/documentation/xcode/creating-distribution-signed-code-for-the-mac/)和[公证](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)。签名也影响 Keychain 访问和登录项等系统功能，不能只验证一次解压启动。
+更新时先退出旧版，再替换 `/Applications` 中的应用，保留上述目录。不要公开上传该目录、Key、未脱敏日志或私人对话；跨系统迁移时重新输入自己的 Key，不直接复制 Windows 的加密凭据。删除应用不会自动删除聊天；需要清空时先退出，再删除用户数据目录。开机自启在系统登录项中可另行关闭。
 
-下一阶段完成标准：在真实 Mac 上完成首次配置、聊天和历史保留、图片输入、语音开始/结束/打断、睡眠与唤醒、拖动/点透/托盘、重启与退出；开启系统能力后再验证屏幕权限拒绝与撤销、窗口跟随、全屏与多屏。需要对承诺支持的芯片架构分别验证，并从下载产物检查签名、公证和首次启动。
+## 从源码构建
 
-目前这是可实施的移植路线，尚不构成 macOS 已兼容的声明，也没有确定发布日期。官方资料核对日期：2026-10-28。
+GitHub Actions 的构建目标为 `macos-15` arm64，使用 Node 22+、Electron 44 arm64 和 Xcode/Swift 工具链。Mac 包需在 macOS 上构建；Swift 辅助程序随应用分发，用户不需要另装编译工具。在 Apple Silicon Mac 上，从仓库根目录运行：
+
+```bash
+cd lite
+npm ci
+npm test
+npm run build:mac
+```
+
+构建会下载对应的 Electron，编译原生辅助程序，生成 `.app`、DMG 和 ZIP；输出位于 `outputs/lite-dist-mac-arm64/`。已有 Electron 44 arm64 解压目录时可设置 `ELECTRON_DIST`，该目录应包含 `Electron.app`。`WHALE_PET_SOURCE` 可指定解压好的原版插件；未设置时由脚本下载 `@luweiyabo/dsh-whale-pet@0.1.3`。源码和资源暂存目录为 `outputs/lite-stage-mac-arm64/`。
+
+在其他系统上可从 `lite/` 运行 `node scripts/build.mjs --mac --arm64 --stage-only` 检查暂存文件；这一步不会编译 Swift、启动 Mac 应用或生成 Mac 安装包。
+
+本次默认采用 ad-hoc 签名。Apple Developer ID 签名与公证需要维护者提供有效的开发者身份及凭据，本仓库不包含这些凭据。Electron 官方说明了[签名、公证与登录项等 API 的限制](https://www.electronjs.org/docs/latest/tutorial/code-signing)；未公证的预发布不保证登录项注册或不同构建间的 Keychain 行为稳定。
+
+官方权限与签名资料核对日期：2026-10-28。
