@@ -27,9 +27,10 @@ module.exports=async function({win,output,getRoute,getFacing,startInertia,stopIn
   const before=win.getBounds();
   await sleep(200);assert.deepEqual(win.getBounds(),before,'preparation keeps the window still');
   await js("document.getElementById('pet').currentTime=3;document.getElementById('pet-hit').dispatchEvent(new MouseEvent('mousemove',{bubbles:true}));void 0;");
-  await sleep(350);
   assert.ok(getRoute(),'hover must not cancel a running route');
-  const after=win.getBounds();assert.ok(after.x!==before.x||after.y!==before.y);
+  // An invisible diagnostic window can have its rendering callbacks throttled.
+  await wait(()=>{const moved=win.getBounds();return moved.x!==before.x||moved.y!==before.y;},'native movement after preparation');
+  const after=win.getBounds();
   const direction=getFacing();
   await js("petAnimator.perform('daily/big_stretch');void 0;");
   await wait(()=>getRoute()===null,'manual action stops movement');
