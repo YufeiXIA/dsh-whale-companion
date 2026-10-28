@@ -29,7 +29,18 @@ test('semantic choice stays independent of voice emotion and unknown assets are 
 
 test('hints use the current message, without replaying previous chat themes', () => {
   const hint = chatAnimationHint([{ content: '我喜欢你' }, { content: '该吃饭了' }]);
+  assert.equal(hint.catalog.length, chatAnimations.length);
+  assert.ok(hint.catalog.some(item=>item.id==='music/playing_the_violin'&&item.meaning));
   assert.equal(hint.candidates[0].id, 'food/eating_rice');
   assert.equal(hint.candidates.some(item => item.id === 'clicks/shy_surprise'), false);
   assert.equal(chatAnimationHint([]), null);
+});
+
+test('recent real reply choices guide variety for direct and proactive replies without replaying topics',()=>{
+  const history=[{role:'user',text:'私人内容'},...Array.from({length:6},(_,i)=>({role:'assistant',animation:'companion/hold_thought',emotion:'neutral',tone:i%2?'curious':'thoughtful',text:'不需要外带的正文'})),{role:'assistant',detail:true,animation:'food/eating_rice'}];
+  const hint=chatAnimationHint([{content:'我们来聊聊音乐'}],history);
+  assert.equal(hint.recent.length,4);assert.equal(hint.recent.some(item=>item.animation==='food/eating_rice'),false);
+  assert.equal(JSON.stringify(hint).includes('私人内容'),false);assert.equal(JSON.stringify(hint).includes('不需要外带的正文'),false);
+  assert.match(hint.variety,/语义准确优先/);
+  assert.equal(chatAnimationHint([],history).recent.length,4);
 });

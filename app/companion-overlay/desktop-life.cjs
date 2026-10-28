@@ -19,22 +19,31 @@ function strollRoute(bounds, area, direction, random = Math.random, scale = 1) {
   return { ...bounds, kind: 'point', target, targetY: floorY(area, bounds.height, scale), area, direction: target >= bounds.x ? 1 : -1 };
 }
 
-// Sit on the top edge of a window; maximised windows and slivers have no room.
-function perchRoute(bounds, rect, display, scale = 1) {
-  if (!rect || rect.width < 220 || rect.y - 170 * scale < display.y) return null;
-  const centre = Math.min(rect.x + rect.width - 80 * scale, Math.max(rect.x + 80 * scale, bounds.x + bounds.width / 2));
-  const target = Math.round(centre - bounds.width / 2), targetY = Math.round(rect.y - bounds.height + feetOffset(scale) + 6);
-  return { ...bounds, kind: 'point', target, targetY, area: display, direction: target >= bounds.x ? 1 : -1 };
+// Prefer the top edge when the whole overlay fits. Otherwise sit inside the
+// visible window, keeping speech and the composer on the monitor as well.
+function perchFailure(rect, display, scale = 1) {
+  if (!rect) return 'missing';
+  if (rect.x >= display.x + display.width || rect.x + rect.width <= display.x ||
+      rect.y >= display.y + display.height || rect.y + rect.height <= display.y) return 'offscreen';
+  return null;
+}
+function perchRoute(bounds, rect, display, scale = 1, anchor = null) {
+  if (perchFailure(rect, display, scale)) return null;
+  const clamp=(value,min,max)=>Math.max(min,Math.min(Math.max(min,max),value));
+  const desired = anchor === null ? bounds.x + bounds.width / 2 : rect.x + rect.width * anchor;
+  const margin=Math.min(80*scale,rect.width/2);
+  const centre=clamp(desired,rect.x+margin,rect.x+rect.width-margin);
+  const target=Math.round(clamp(centre-bounds.width/2,display.x+12,display.x+display.width-bounds.width-12));
+  const edgeY=rect.y-bounds.height+feetOffset(scale)+6;
+  const placement=edgeY>=display.y+12&&edgeY+bounds.height<=display.y+display.height-12?'edge':'inside';
+  const visibleBottom=Math.min(rect.y+rect.height,display.y+display.height);
+  const targetY=Math.round(clamp(placement==='edge'?edgeY:visibleBottom-bounds.height-12,
+    display.y+12,display.y+display.height-bounds.height-12));
+  return { ...bounds, kind: 'point', target, targetY, area: display, direction: target >= bounds.x ? 1 : -1,
+    placement,anchor: (centre-rect.x)/rect.width };
 }
 
-// Only the window in front is visible to the sampler, so the perch holds while she cannot see it
-// and is lost when that window, back in front, has moved, resized or been minimised.
-function perchLost(perch, sample) {
-  if (!sample.available || sample.windowId !== perch.windowId) return false;
-  if (!sample.rect) return true;
-  const a = perch.rect, b = sample.rect;
-  return Math.abs(a.x - b.x) > 4 || Math.abs(a.y - b.y) > 4 || Math.abs(a.width - b.width) > 4;
-}
+function perchKeepsVisible(sample, target) { return Boolean(target && sample.windowId === target.windowId); }
 
 // Gravity with one soft bounce, in DIP and milliseconds.
 function stepFall(state, floor, dt) {
@@ -66,4 +75,4 @@ function createHealthClock({ waterMinutes = 60, stretchMinutes = 50, breakMinute
   };
 }
 
-module.exports = { feetOffset, floorY, quickChatY, strollRoute, perchRoute, perchLost, stepFall, createHealthClock };
+module.exports = { feetOffset, floorY, quickChatY, strollRoute, perchRoute, perchFailure, perchKeepsVisible, stepFall, createHealthClock };

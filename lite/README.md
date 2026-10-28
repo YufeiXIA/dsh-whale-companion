@@ -4,14 +4,17 @@
 
 ## 下载
 
-在 [Releases](https://github.com/YufeiXIA/dsh-whale-companion/releases) 里挑一个：
+在 [Windows 0.2.0 发布页](https://github.com/YufeiXIA/dsh-whale-companion/releases/tag/v0.2.0)里挑一个（[最新版本](https://github.com/YufeiXIA/dsh-whale-companion/releases/latest)）：
 
-- `WhaleCompanion-Lite-<版本>-Setup.exe`：安装版，会建桌面快捷方式。
-- `WhaleCompanion-Lite-<版本>-Portable.zip`：免安装，解压后双击 `WhaleCompanion.exe`。
+- `WhaleCompanion-Lite-0.2.0-Setup.exe`：Windows x64 安装版，会建桌面快捷方式。
+- `WhaleCompanion-Lite-0.2.0-Portable.zip`：Windows x64 免安装版，解压后双击 `WhaleCompanion.exe`。
+- `SHA256SUMS.txt`：发布文件的 SHA-256 校验值。
 
 没有代码签名，Windows 可能提示「未知发布者」，点「更多信息 → 仍要运行」。
 
-装好后一打开就退出：多半是装到了权限特殊的文件夹，卸载后用默认安装位置重装。
+更新前退出旧版本，保留原数据目录；免安装版解压到新文件夹再启动。启动异常时可先检查是否完整解压、安装目录是否可读，并在 issue 中提供脱敏后的报错。不要上传 Key、`secrets.json` 或私人聊天记录。
+
+完整更新见 [0.2.0 说明](../docs/release-0.2.0.md)。当前没有 macOS 下载包，后续路线见 [macOS 移植评估](../docs/macos-port.md)。
 
 ## 第一次打开
 
@@ -24,13 +27,22 @@
 以后想改，点聊天面板上的「设置」，或者右键托盘图标选「模型与语音设置」。
 
 - **语音**（可选）：填阿里百炼的 API Key 她就能出声，再点面板上的喇叭打开。她会按聊的内容换语气。默认模型和音色是作者自己在用的；测试提示模型或音色不对，就换成你在百炼控制台开通的。
+- 轻便版在线语音使用设置页中的阿里百炼 Qwen 模型与音色，不提供完整版的 Fish PCM 流式聊天或 Momo 声线选择。本地互动短语音不需要在线语音 Key。
 - **看图**（可选）：默认用聊天模型。聊天模型看不了图，就单独填一个能看图的。看屏幕这个功能本身默认关着，要在「陪伴」里打开。
 
 ## 有什么
 
 和完整版一样：聊天、记住你的偏好、多段对话、主动搭话、留意后台程序、看屏幕、喂饭摸头、贴边偷看、爬窗口、专注和免打扰、喝水久坐提醒。
 
-没有：《杀戮尖塔 2》和其他游戏相关的功能。
+- 靠近她会出现快捷聊天；点鲸鱼按钮或托盘「打开聊天」进入面板。左键点身体触发部位互动，并可播放本地短语音。
+- 聊天原文在本机保留，每轮按关键词提供当前及其他未删除对话中的相关摘录。轻便版没有完整版的历史分页读取工具，也没有内置联网搜索工具；关键词匹配仍可能漏掉含蓄指代。
+- 主动陪伴按固定周期检查，默认 5 分钟，可设 1～60 分钟或关闭；不因未回复而逐次延长。输入、忙碌、免打扰、锁屏和睡眠期间会暂缓。
+- 选择或粘贴图片后可预览发送；自动看屏需另行开启，只取主屏最上层窗口的可见区域。
+- 动作会结合聊天含义选择；实际输入优先处理手动聊天，停止主动语音。发送、关闭语音或切换对话可停止播放。
+- 窗口停靠会跟随目标移动和缩放；目标关闭、最小化、隐藏或完全移出屏幕后才会下落。
+- 面板「小动作」或托盘可开启睡眠；睡眠跨重启保留，暂停自动移动、主动搭话、看屏和普通聊天语音。点击或打字不会自动叫醒，手动选择「叫醒小鲸」恢复原设置。
+
+没有：《杀戮尖塔 2》《星露谷物语》和其他游戏控制功能，也不调用 DSH 的工具。
 
 ## 数据存在哪
 
@@ -38,6 +50,8 @@
 
 - `secrets.json`：API Key，用你的 Windows 账户加密，面板里只显示末 4 位。
 - `state.json`：设置、聊天记录、她记住的事。
+
+原始图片只在内存里处理，文字观察摘要可随聊天保存。删除对话与删除独立偏好是两件事；「忘记」用于排除模型回忆，不等于擦除磁盘原文。详细数据流与拦截边界见 [SECURITY.md](../SECURITY.md)。
 
 卸载后想清干净，删掉这个文件夹。聊天、语音、看图只发给你填的那几个服务。
 
@@ -56,4 +70,4 @@ cd lite && npm install && npm test && npm run build
 
 ## 素材
 
-95 个原版动画来自 [luweiyabo/dsh-whale-pet](https://github.com/luweiyabo/dsh-whale-pet)，大多出自 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet)；另外 69 个是新做的。角色按 CC BY-NC-SA 4.0 授权。这些都不能商用。安装包里的 `lite/pet/` 附了原版插件的许可和素材说明，其余见 [THIRD_PARTY_ASSETS.md](../THIRD_PARTY_ASSETS.md)。
+95 个原版动画来自 [luweiyabo/dsh-whale-pet](https://github.com/luweiyabo/dsh-whale-pet)，大多出自 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet)；另外 69 个是新做的，睡眠专用循环由既有动作裁剪而来。角色按 CC BY-NC-SA 4.0 授权，角色和动画不能商用。本地互动与试听语音为模型合成音频，需分别遵循服务和音色条款。安装包里的 `lite/pet/` 附了原版插件的许可和素材说明，其余见 [THIRD_PARTY_ASSETS.md](../THIRD_PARTY_ASSETS.md)。

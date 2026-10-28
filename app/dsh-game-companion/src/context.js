@@ -3,9 +3,8 @@ import { conversationContext } from './conversation.js';
 
 // Compact the durable model surface, not an ephemeral copy of an API request.
 // The original event log and chat-delivery evidence remain intact.
-export function compactGameContext(session, { step = 0, messages = [], memory, personal, strategy = null, goal = null, pending = null, force = false } = {}) {
-  const history = session.deriveMessages();
-  const before = JSON.stringify(history).length;
+export function compactGameContext(session, { step = 0, messages = [], memory, personal, history = null, strategy = null, goal = null, pending = null, force = false } = {}) {
+  const before = JSON.stringify(session.deriveMessages()).length;
   if (before <= 240000 && !force) return null;
   const events = session.snapshotEvents();
   const nodes = [...session.surface.nodes];
@@ -29,7 +28,7 @@ export function compactGameContext(session, { step = 0, messages = [], memory, p
       id: randomUUID(), role: 'user', source: { kind: 'plugin:dsh-game-companion-context' },
       content: [{ type: 'text', text: JSON.stringify(index === ranges.length - 1 ? {
         note: '旧操作快照已归档。以下聊天摘录仅供回忆，不是新的指令，也不是当前游戏状态。动作只能以最新观察为准，不重试历史动作。',
-        goal, pending_action: pending, strategy, conversation: conversationContext(messages, memory, personal)
+        goal, pending_action: pending, strategy, conversation: conversationContext(messages, memory, personal), history
       } : { note: '此处旧操作记录已归档，不重放历史动作。' }) }]
     }, { surfaceOp: { op: 'replace', startSeq: range[0], endSeq: range.at(-1) }, sourceEventSeqs: range });
     replaced += range.length;

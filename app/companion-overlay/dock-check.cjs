@@ -10,7 +10,7 @@ module.exports=async function({win,output,hideAtEdge,getEdge,getEdgeX,getTucked,
   async function waitFor(check,label){for(let i=0;i<100;i++){if(await check())return;await sleep(20);}throw Error('Dock check timed out: '+label);}
   const page=()=>js(`(()=>{const rect=id=>{const r=document.getElementById(id).getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height};};
     return {side:document.body.getAttribute('data-edge'),bodyClip:document.body.style.clipPath,pet:rect('pet-hit'),bubble:rect('speech-bubble'),quick:rect('quick-chat'),
-      width:innerWidth,height:innerHeight,edgeFacing:getComputedStyle(document.getElementById('stage')).getPropertyValue('--edge-facing').trim(),compact:document.body.classList.contains('compact'),quickOpen:document.body.classList.contains('quick-chat-open'),focused:document.activeElement?.id,active:state?.scheduler?.active};})()`);
+      width:innerWidth,height:innerHeight,edgeFacing:getComputedStyle(document.getElementById('stage')).getPropertyValue('--edge-facing').trim(),layers:[...document.querySelectorAll('video.pet-layer')].map(v=>({src:v.getAttribute('src'),transform:getComputedStyle(v).transform,facing:getComputedStyle(v).getPropertyValue('--clip-facing')})),compact:document.body.classList.contains('compact'),quickOpen:document.body.classList.contains('quick-chat-open'),focused:document.activeElement?.id,active:state?.scheduler?.active};})()`);
   const fits=(r,p)=>r.left>=-.01&&r.right<=p.width+.01&&r.top>=-.01&&r.bottom<=p.height+.01;
   async function screenshot(name,side){
     const bounds=win.getBounds(),width=Math.min(440,bounds.width);
@@ -38,11 +38,12 @@ module.exports=async function({win,output,hideAtEdge,getEdge,getEdgeX,getTucked,
         {id:'dock-review-${side}-${size}',role:'assistant',text:'我就在边上陪着你。刚才那段介绍我也认真看了一会儿，那个小细节还挺有意思的。'.repeat(8).slice(0,240),ambient:true,spoken:false,at:Date.now()}]});void 0;`);
       await sleep(220);const speaking=await page();
       assert.equal(speaking.active,true);assert.ok(fits(speaking.bubble,speaking),'inward bubble fits');assert.equal(speaking.bodyClip,'');assert.ok(speaking.compact);
-      assert.equal(speaking.edgeFacing,side<0?'1':'-1','edge pose is mirrored inward independently of the walking clips');
+      assert.equal(speaking.edgeFacing,side<0?'-1':'1','the resting artwork faces left by default; mirror it at the left edge');
+      for(const layer of speaking.layers)assert.equal(Number(layer.transform.match(/^matrix\(([^,]+)/)?.[1]),side,JSON.stringify(layer));
       const petCentre=(speaking.pet.left+speaking.pet.right)/2;
       assert.ok(Math.abs(petCentre-(side<0?0:speaking.width))<=1.1,'half of the hit region stays outside the carrier');
       assert.deepEqual(win.getBounds(),fixed);assert.equal(getEdgeX(),fixedAnchor);
-      await js("document.getElementById('pet-hit').click();document.getElementById('quick-message').value='这句只检查输入布局，不发送。';void 0;");
+      await js("document.getElementById('quick-panel').click();document.getElementById('quick-message').value='这句只检查输入布局，不发送。';void 0;");
       await waitFor(()=>js("document.activeElement?.id==='quick-message'"),'keyboard focus');
       await sleep(220);
       const typing=await page();assert.ok(typing.quickOpen&&typing.compact);assert.ok(fits(typing.quick,typing),JSON.stringify({display:display.id,scale:size,...typing}));

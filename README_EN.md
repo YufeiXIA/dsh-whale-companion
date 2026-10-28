@@ -2,6 +2,8 @@
 
 A whale-maid who lives on your desktop, chats with you, remembers what you tell her, and can join you in *Slay the Spire 2* co-op. She runs on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH). Full docs are in Chinese: [README.md](README.md).
 
+[Download Windows 0.2.0](https://github.com/YufeiXIA/dsh-whale-companion/releases/tag/v0.2.0) · [Latest release](https://github.com/YufeiXIA/dsh-whale-companion/releases/latest) · [Release notes](docs/release-0.2.0.md) · [macOS feasibility and next milestone](docs/macos-port.md)
+
 <table>
 <tr>
 <td align="center"><img src="docs/media/chat.gif" width="260" alt="She greets you, then gets caught snacking"><br>Greeting, caught snacking</td>
@@ -26,12 +28,17 @@ The UI is in Chinese. The previews above use sample chats. Actual desktop and ga
 | Needs DSH | Yes; models and keys live in DSH | No; paste a key in her settings page |
 | Install | Set paths and a DSH profile (see below) | Installer or portable zip |
 | Chat, memory, conversations, check-ins, screen reading | Yes | Yes |
+| History retrieval | Relevant excerpts plus search and paginated-read tools | Relevant keyword excerpts; no paginated-read tool |
+| Web research | DSH search and page tools | No built-in web research tools |
 | Feeding, edge peek, window perching, focus timers | Yes | Yes |
-| Voice | Optional, with your own Fish Audio key | Yes, with an Alibaba Bailian key |
+| Voice | Streaming Fish Audio chat; other voices require an external adapter | Alibaba Bailian; see the Lite setup guide |
 | Slay the Spire 2 teammate | Yes (experimental) | No |
-| Size | Depends on your DSH and Electron | About 500 MB installed |
+| Stardew Valley adapter | Experimental integration and mod source; actual farming unverified | No |
+| Distribution | Source package; bring DSH, Electron and the original animation plugin | Windows x64 installer and portable ZIP |
 
 Pick Lite for a desktop pet you can chat with; pick Full if you want her to play games with you.
+
+Choose `WhaleCompanion-Lite-0.2.0-Setup.exe` for installation, or `WhaleCompanion-Lite-0.2.0-Portable.zip` to extract and run. `WhaleCompanion-Full-0.2.0-Source.zip` contains source and requires the Full setup below. `SHA256SUMS.txt` accompanies the downloads. This release supports Windows; there is no macOS build yet.
 
 ## Credits
 
@@ -42,14 +49,20 @@ Based on [luweiyabo/dsh-whale-pet](https://github.com/luweiyabo/dsh-whale-pet), 
 The code is new, not a fork. It still uses the original plugin's 95 animations, so you need that plugin too. On top of that:
 
 - She lives in her own transparent desktop window, not the DSH web page.
-- She has a persona and memory, and you can keep several chats.
+- Local chat archives and explicit preferences, multiple named conversations, and keyword retrieval across undeleted conversations. Retrieved excerpts carry message, conversation and time references; implicit references may still be missed. Forgetting excludes earlier information from model recall rather than erasing its raw disk record.
 - 69 new animations.
-- Desktop tricks: feeding, head pats, flinging, edge snapping and peeking in from the screen edge, walking along the taskbar, sitting on top of windows, hiding when another app goes fullscreen, focus timers, and stretch, water and bedtime reminders.
+- Desktop tricks: feeding, body interactions with local audio responses, head pats, flinging, edge peeking, free roaming, taskbar strolls, focus timers, and stretch, water and bedtime reminders. Window perching follows movement and resizing; the pet drops when the target closes, minimizes, hides or leaves the display completely.
 - Optional: she can check in using your app category, a short allow-list of common apps open in the background (Steam, chat, music and so on, category names only, with its own switch), recent conversation and an opt-in glimpse of the visible top window on the primary monitor. A secondary-monitor focus never changes the screenshot target. Proactive messages can use a short paragraph, up to 240 characters.
-- Reading or watching videos without keyboard or mouse activity does not mute proactive company. Each unanswered greeting adds five minutes to the selected interval; replying clears the extra delay. She can revisit the same app with a new topic.
+- Proactive company checks a fixed schedule: five minutes by default, configurable from 1 to 60 minutes. Unanswered messages do not lengthen it. Busy periods, typing, quiet mode, screen lock and sleep defer it, without a burst of missed greetings afterward. Reading or watching without keyboard input does not mute company by itself.
+- Attach or paste an image, preview it, then send. Automatic screen viewing is separately opt-in. Higher-resolution automatic captures and richer summaries focus on the main content, with the same primary-monitor boundary.
+- Chat replies can select animations by meaning. Actual typing interrupts proactive speech and gives manual conversation priority; focusing the input alone does not hold the listening animation indefinitely.
+- Persistent sleep mode loops the closed-eye tail-hug animation with Zzz, pausing roaming, proactive chat, screen viewing and ordinary chat speech. Clicking, typing and dragging do not wake her; use the panel or tray to wake her and restore the previous settings.
 - Experimental *Slay the Spire 2* teammate.
+- Experimental [*Stardew Valley* adapter and mod source](app/dsh-game-companion/STARDEW.md). Actual farming, in-game bubbles and voice have not been validated; separate setup and testing are still needed.
 
 When docked, she stays half-hidden during greetings, replies, clicks and typing. Speech bubbles open diagonally toward the inside of the screen, with the input bar beside the edge. Drag her out to undock. This update also keeps the previous animation visible until its replacement starts, cancels pending screen glances when paused, and refines the title font and header position. See [release notes (Chinese)](docs/fixed-half-dock.md).
+
+Clicking the body triggers a body interaction. Hover nearby for quick chat, then use the whale button or the tray's Open chat command for the panel. Earlier demo captures below illustrate individual actions; the [0.2.0 notes](docs/release-0.2.0.md) describe current behavior.
 
 ## Live captures
 
@@ -87,14 +100,16 @@ All new captures use an isolated test conversation; game bubbles are model repli
 
 ## Setup
 
-You need Windows 10/11, DSH Desktop (tested on 0.2.0-rc.2), PowerShell 7, and Electron 44.0.0 unpacked into `tools/electron44/`.
+You need Windows 10/11, DSH Desktop 0.2.0-rc.2 (the current validation target), PowerShell 7, and Electron 44.0.0 unpacked into `tools/electron44/`. The DSH installation must include `@deepseek-ai/dsh-web`, `@deepseek-ai/dsh-web-search-deepseek`, `@deepseek-ai/dsh-web-fetch-http` and `@deepseek-ai/dsh-tool-web`. Other DSH versions have not been validated.
 
 1. Copy `companion.config.example.json` to `companion.config.json` and fill in your paths.
-2. Run `pwsh tools/start-companion-profile.ps1` once, close it, then run `pwsh tools/prepare-companion-profile.ps1`.
-3. Install the original plugin: `dsh plugin --profile companion-test add @luweiyabo/dsh-whale-pet`.
+2. Run `pwsh tools/prepare-companion-profile.ps1` first. It prepares the separate `companion-test` profile, creating its base/web configuration when absent and linking the companion plugin. Configure a model provider for that profile, or set `llmProviderProfile` and `llmProviderId` in step 1 to copy an existing provider configuration.
+3. Install the original plugin unless you already linked it through `whalePetPlugin`: `dsh plugin --profile companion-test add @luweiyabo/dsh-whale-pet`.
 4. Start her: `pwsh tools/start-whale-companion.ps1 -DesktopOnly`.
 
-For voice, use the public Fish Audio voice 「蓝色大肥鱼」 (made by Fish Audio user 大大大肥鱼): save your Fish Audio API key as `fish-audio-key.txt` in the data folder (default `~/.dsh/game-companion/`), restart DSH, then pick it under Sound in the panel. The free tier works. She changes her tone of voice to fit what you talk about.
+For voice, use the public Fish Audio voice 「蓝色大肥鱼」 (made by Fish Audio user 大大大肥鱼): save your Fish Audio API key as `fish-audio-key.txt` in the data folder (default `~/.dsh/game-companion/`), restart DSH, then pick it under Sound in the panel. Your account needs available quota for the model. Fish chat audio streams as PCM while it is generated; latency depends on the network and service. Local body responses and installed preview clips play without a synthesis request. Longhua and Momo chat synthesis require a separately installed adapter and credentials, which are not bundled.
+
+Full chat uses the model configured in DSH. Its current image analysis calls the official DeepSeek API separately and needs `DEEPSEEK_API_KEY` in the host environment. Raw images remain in memory; observation text can enter chat history. Optional web research uses public search and page tools. See [privacy and security](SECURITY.md) for data destinations and limits of sensitive-window filtering.
 
 ## License
 

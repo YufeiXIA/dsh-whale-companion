@@ -23,7 +23,7 @@ test('old picture remains until the incoming clip is decoded; stale loads cannot
   stale();assert.equal(first.id,'pet');assert.equal(ready,0);
   back.onloadeddata();await Promise.resolve();
   assert.equal(back.id,'pet');assert.equal(first.id,'pet-buffer');assert.equal(ready,1);
-  assert.equal(back.properties['--clip-facing'],'1');
+  assert.equal(back.properties['--clip-facing'],'var(--edge-facing,1)','fixed artwork still obeys inward dock orientation');
   player.start('/whale-pet/work/deep_thought.webm',false,()=>ready++);
   first.onloadeddata();await Promise.resolve();assert.equal(first.id,'pet');assert.equal(ready,2);
 });

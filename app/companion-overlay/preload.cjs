@@ -33,10 +33,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
   ipcRenderer.on('companion-vision-capture',()=>window.dispatchEvent(new CustomEvent('companion-vision-capture')));
   for(const name of ['fullscreen','health','edge','peek'])ipcRenderer.on('companion-'+name,(_event,value)=>window.dispatchEvent(new CustomEvent('companion-'+name,{detail:value})));
-  for(const name of ['perched','perch-failed'])ipcRenderer.on('companion-'+name,()=>window.dispatchEvent(new CustomEvent('companion-'+name)));
+  ipcRenderer.on('companion-perched',(_event,placement)=>window.dispatchEvent(new CustomEvent('companion-perched',{detail:placement})));
+  ipcRenderer.on('companion-perch-message',(_event,text)=>window.dispatchEvent(new CustomEvent('companion-perch-message',{detail:text})));
   ipcRenderer.on('companion-dock-locked',()=>window.dispatchEvent(new CustomEvent('companion-dock-locked')));
-  const desktopPrefs=detail=>{const [stroll,fullscreenHide]=String(detail).split(',');return {stroll:stroll==='1',fullscreenHide:fullscreenHide!=='0'};};
-  void ipcRenderer.invoke('companion-window','desktop-prefs',desktopPrefs((saved('companion-stroll')===true?'1':'0')+','+(saved('companion-fullscreen-hide')===false?'0':'1')));
+  const desktopPrefs=detail=>{const [stroll,fullscreenHide,sleeping]=String(detail).split(',');return {stroll:stroll==='1',fullscreenHide:fullscreenHide!=='0',sleeping:sleeping==='1'};};
+  void ipcRenderer.invoke('companion-window','desktop-prefs',desktopPrefs((saved('companion-stroll')===true?'1':'0')+','+(saved('companion-fullscreen-hide')===false?'0':'1')+','+(saved('companion-sleep')===true?'1':'0')));
   window.addEventListener('companion-desktop-prefs',event=>void ipcRenderer.invoke('companion-window','desktop-prefs',desktopPrefs(event.detail)));
   ipcRenderer.on('companion-tray',(_event,command)=>window.dispatchEvent(new CustomEvent('companion-tray',{detail:command})));
   render(initialNativeState);
@@ -64,11 +65,14 @@ window.addEventListener('DOMContentLoaded', async () => {
   moveButton.title='选择桌面目的地；Esc 取消';moveButton.onclick=pickPoint;
   document.getElementById('free-roam').parentElement.insertAdjacentElement('afterend',moveButton);
   const perchButton=document.createElement('button');perchButton.id='perch-window';perchButton.textContent='爬到窗口上';
-  perchButton.title='坐到你刚才用的窗口顶上；窗口一挪她就掉下来';perchButton.onclick=()=>void ipcRenderer.invoke('companion-window','perch');
+  perchButton.title='停靠当前窗口并跟随它移动；关闭或最小化时落下来';perchButton.onclick=()=>void ipcRenderer.invoke('companion-window','perch');
   moveButton.insertAdjacentElement('afterend',perchButton);
-  pet.title='左键聊天 · 拖动挪窝 · 右键选择目的地';
+  pet.title='单击身体互动 · 鲸鱼按钮打开面板 · 拖动挪窝 · 右键选择目的地';
   pet.addEventListener('contextmenu',event=>{event.preventDefault();pickPoint();});
-  window.addEventListener('companion-pick-ready',()=>{void ipcRenderer.invoke('companion-window','point-pick').catch(()=>window.dispatchEvent(new CustomEvent('companion-point-error')));});
+  window.addEventListener('companion-pick-ready',async()=>{
+    try{if(!await ipcRenderer.invoke('companion-window','point-pick'))window.dispatchEvent(new CustomEvent('companion-point-selection-cancel'));}
+    catch{window.dispatchEvent(new CustomEvent('companion-point-error'));}
+  });
   ipcRenderer.on('companion-point-run',()=>window.dispatchEvent(new CustomEvent('companion-point-run')));
   ipcRenderer.on('companion-point-stop',()=>window.dispatchEvent(new CustomEvent('companion-point-stop')));
   for(const name of ['roam-blocked','fling','settle'])ipcRenderer.on('companion-'+name,()=>window.dispatchEvent(new CustomEvent('companion-'+name)));
@@ -83,15 +87,19 @@ window.addEventListener('DOMContentLoaded', async () => {
     const video=document.getElementById('pet');
     const step=()=>{
       if(Number.isFinite(video.duration)&&video.duration>4&&!video.paused){
-        void ipcRenderer.invoke('companion-window','point-step',Math.max(0,Math.min(1,(video.currentTime-2)/(video.duration-4))));
+        const progress=Math.max(0,Math.min(1,(video.currentTime-2)/(video.duration-4)));
+        void ipcRenderer.invoke('companion-window','point-step',progress);
+        if(progress===1){window.dispatchEvent(new CustomEvent('companion-point-arrived'));return;}
       }
       pointFrame=requestAnimationFrame(step);
     };
     pointFrame=requestAnimationFrame(step);
   });
+  let composeExtra=0;
+  window.addEventListener('companion-composer-resize',event=>{composeExtra=Number(event.detail);syncLayout();});
   function syncLayout(){
     inside=undefined;
-    void ipcRenderer.invoke('companion-window','layout',!body.classList.contains('compact'),Number(document.getElementById('pet-size').value)/100);
+    void ipcRenderer.invoke('companion-window','layout',!body.classList.contains('compact'),Number(document.getElementById('pet-size').value)/100,composeExtra);
     window.dispatchEvent(new CustomEvent('companion-panel',{detail:!body.classList.contains('compact')}));
   }
   new MutationObserver(syncLayout).observe(body,{attributes:true,attributeFilter:['class']});
@@ -139,7 +147,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('companion-focus-quick',focusQuick);
   ipcRenderer.on('companion-focus-quick',()=>{window.dispatchEvent(new CustomEvent('companion-open-quick'));focusQuick();});
   quickInput.addEventListener('pointerdown',event=>{
-    event.preventDefault();focusQuick();
+    if(document.activeElement!==quickInput){event.preventDefault();focusQuick();}
   });
   window.addEventListener('companion-quick-closed',()=>{inside=undefined;void ipcRenderer.invoke('companion-window','quick-release');});
   document.addEventListener('mousemove',event=>{

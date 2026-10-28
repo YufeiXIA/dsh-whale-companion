@@ -3,6 +3,11 @@ const { app, safeStorage } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const releaseCheck = process.argv.includes('--release-check');
+if (releaseCheck) {
+  if (!process.env.WHALE_RELEASE_CHECK_DIR) throw new Error('Release check requires an isolated data directory');
+  app.setPath('userData', path.resolve(process.env.WHALE_RELEASE_CHECK_DIR));
+}
 const data = app.getPath('userData');
 const output = path.join(data, 'runtime');
 

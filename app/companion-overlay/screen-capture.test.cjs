@@ -9,6 +9,7 @@ test('primary capture uses the visible screen composite cropped to its top windo
   const capture=createScreenCapture({getPrimaryDisplay:()=>({id:7}),inspect:async()=>sample,
     getSources:async options=>{
       assert.deepEqual(options.types,['screen']);
+      assert.deepEqual(options.thumbnailSize,{width:1920,height:1920});
       return [{display_id:'8',thumbnail:{isEmpty(){throw Error('secondary screen must not be used');}}},
         {display_id:'7',thumbnail:{isEmpty:()=>false,getSize:()=>({width:1280,height:720}),crop:rect=>{crop=rect;return {toJPEG:()=>Buffer.from([255,216,255,217])};}}}];
     },upload:async value=>{body=value;}});
@@ -43,7 +44,7 @@ test('only the selected active window is consumed, in memory, with a visible cap
     getSources:async options=>{
       assert.deepEqual(options.types,['window']);
       return [{id:'window:99:0',thumbnail:{toJPEG(){throw Error('wrong window');}}},
-        {id:'window:42:0',thumbnail:{isEmpty:()=>false,toJPEG:quality=>{assert.equal(quality,72);selected++;return Buffer.from([255,216,255,217]);}}}];
+        {id:'window:42:0',thumbnail:{isEmpty:()=>false,toJPEG:quality=>{assert.equal(quality,82);selected++;return Buffer.from([255,216,255,217]);}}}];
     },
     upload:async body=>{
       if(body.unavailable)return;
@@ -54,6 +55,22 @@ test('only the selected active window is consumed, in memory, with a visible cap
   await capture.capture('ticket',sample);
   await capture.capture('ticket2',sample);
   assert.equal(selected,2);assert.equal(uploaded,2);assert.equal(signals,2);
+});
+
+test('detailed screenshots retry JPEG quality once within the existing upload limit',async()=>{
+  const sample={available:true,app:'browser',windowId:'42'};
+  for(const fits of [true,false]){
+    const qualities=[];let body;
+    const capture=createScreenCapture({inspect:async()=>sample,getSources:async()=>[
+      {id:'window:42:0',thumbnail:{isEmpty:()=>false,toJPEG:quality=>{
+        qualities.push(quality);return Buffer.alloc(quality===64&&fits?900000:1000001);
+      }}}
+    ],upload:async value=>{body=value;}});
+    await capture.capture('detail',sample);capture.close();
+    assert.deepEqual(qualities,[82,64]);
+    if(fits)assert.equal(Buffer.from(body.jpeg,'base64').length,900000);
+    else assert.deepEqual(body,{ticket:'detail',unavailable:true});
+  }
 });
 
 test('changed, locked, sensitive or screen-clipping windows never send image bytes',async t=>{

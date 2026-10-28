@@ -2,24 +2,30 @@
 // Compensate for the transparent video padding so the input stays close to the feet.
 function compactFooter(scale) { return 76-55*scale; }
 function planRoam(bounds, area, direction=-1, cursor=null, random=Math.random, scale=1) {
+  if(cursor){
+    const route=planPoint(bounds,area,cursor,scale);
+    return Math.hypot(route.target-bounds.x,route.targetY-bounds.y)>=24?route:null;
+  }
   const minX=area.x, maxX=Math.max(minX,area.x+area.width-bounds.width);
   const minY=area.y, maxY=Math.max(minY,area.y+area.height-bounds.height);
   const x=Math.min(maxX,Math.max(minX,bounds.x)), y=Math.min(maxY,Math.max(minY,bounds.y));
-  if(cursor){
-    const cx=x+bounds.width/2,cy=y+bounds.height-118*scale-compactFooter(scale);
-    const dx=cursor.x-cx,dy=cursor.y-cy,distance=Math.hypot(dx,dy);
-    if(distance>=120){
-      const travel=Math.min(distance-80,240);
-      const route=planPoint({...bounds,x,y},area,{x:cx+dx/distance*travel,y:cy+dy/distance*travel},scale);
-      if(Math.hypot(route.target-x,route.targetY-y)>=24)return route;
-    }
-  }
-  const target=x+direction*(60+random()*180);
-  if(target<minX+20||target>maxX-20)return null;
-  return {x,y,target,area,width:bounds.width,height:bounds.height,direction};
+  const distance=320+random()*320,angle=random()*Math.PI*2;
+  let dx=maxX>minX?Math.cos(angle):0,dy=maxY>minY?Math.sin(angle):0;
+  const length=Math.hypot(dx,dy);if(!length)return null;
+  dx/=length;dy/=length;
+  // Reflect blocked components toward the roomier side; preserve the random angle.
+  if(x+dx*distance<minX||x+dx*distance>maxX)dx=Math.abs(dx)*(maxX-x>=x-minX?1:-1);
+  if(y+dy*distance<minY||y+dy*distance>maxY)dy=Math.abs(dy)*(maxY-y>=y-minY?1:-1);
+  const roomX=dx>0?maxX-x:x-minX,roomY=dy>0?maxY-y:y-minY;
+  const travel=Math.min(distance,dx?roomX/Math.abs(dx):Infinity,dy?roomY/Math.abs(dy):Infinity);
+  if(travel<40)return null;
+  const target=x+dx*travel,targetY=y+dy*travel;
+  return {...bounds,kind:'point',target,targetY,area,direction:Math.abs(target-bounds.x)<1?direction:Math.sign(target-bounds.x)};
 }
 
 function roamPosition(route, progress, bounds) {
+  // Autonomous movement eases into and out of the clip's moving section.
+  if(route.smooth)progress=progress*progress*(3-2*progress);
   if(route.kind==='point')return {
     x:Math.round(route.x+(route.target-route.x)*progress),
     y:Math.round(route.y+(route.targetY-route.y)*progress)

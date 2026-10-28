@@ -1,4 +1,4 @@
-const { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, Menu, screen, Tray } = require('electron');
+const { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, Menu, screen, shell, Tray } = require('electron');
 const { readFile, mkdir, rm } = require('node:fs/promises');
 const path = require('node:path');
 const { planRoam, planPoint, roamPosition, compactFooter } = require('./roaming.cjs');
@@ -6,13 +6,13 @@ const {releaseVelocity,stepInertia}=require('./inertia.cjs');
 const { createPointPicker } = require('./point-picker.cjs');
 const { createGameLifecycle } = require('./game-lifecycle.cjs');
 const { createActivitySensor } = require('./activity.cjs');
+const { createWindowTracker } = require('./window-tracker.cjs');
 const { createScreenCapture } = require('./screen-capture.cjs');
 const { edgeSnap } = require('./edge-snap.cjs');
-const { floorY, quickChatY, strollRoute, perchRoute, perchLost, stepFall, createHealthClock } = require('./desktop-life.cjs');
+const { floorY, quickChatY, strollRoute, perchRoute, perchFailure, perchKeepsVisible, stepFall, createHealthClock } = require('./desktop-life.cjs');
 const execFile=require('node:util').promisify(require('node:child_process').execFile);
 
 const root = path.resolve(__dirname, '../..');
-// Set by lite/main.cjs: the standalone app runs its own host in this process and has no game.
 const lite = global.whaleLite ?? null;
 const output = lite?.output ?? path.join(root, 'outputs/companion-runtime');
 const data = lite?.data ?? path.join(root, 'app/companion-test/overlay-data');
@@ -29,10 +29,20 @@ const animationCheck = process.argv.includes('--animation-check');
 const conversationCheck = process.argv.includes('--conversation-check');
 const emotionCheck = process.argv.includes('--emotion-check');
 const ambientCheck = process.argv.includes('--ambient-check');
+const touchCheck = process.argv.includes('--touch-check');
+const naturalCheck = process.argv.includes('--natural-check');
+const interactionCheck = process.argv.includes('--interaction-check');
+const composerCheck = process.argv.includes('--composer-check');
 const pointCheck = process.argv.includes('--point-check');
 const edgeCheck = process.argv.includes('--edge-check');
-const smoke = process.argv.includes('--smoke-test') || appearanceTest || animationCheck || conversationCheck || emotionCheck || ambientCheck || pointCheck || edgeCheck;
+const perchCheck = process.argv.includes('--perch-check');
+const motionCheck = process.argv.includes('--motion-check');
+const streamVoiceCheck = process.argv.includes('--stream-voice-check');
+const sleepCheck = process.argv.includes('--sleep-check');
+const releaseCheck = process.argv.includes('--release-check');
+const smoke = releaseCheck || process.argv.includes('--smoke-test') || appearanceTest || animationCheck || conversationCheck || emotionCheck || ambientCheck || touchCheck || naturalCheck || interactionCheck || composerCheck || pointCheck || edgeCheck || perchCheck || motionCheck || streamVoiceCheck || sleepCheck;
 let win, base, cookie, closing = false, allowClose = false, clickThrough = false, pointerIgnored=false;
+let startupFailed = false;
 let toggleAvailable = false, focusAvailable = false, quickWasClickThrough = null;
 let dragStart, dragOrigin=null, quickLift=null;
 let panelOpen=false, roamRoute=null, layoutKey='';
@@ -41,7 +51,7 @@ let facing=-1,hoverFacing=null,inertiaTimer=null,dragSamples=[],motionGeneration
 let gameLifecycle, gameTimer, activitySensor, screenCapture, activityHeartbeat = 0;
 let edge=null,edgeX=null,tucked=false,slideTimer=null,slideTarget=null,desktopMotionAllowed=true,tray,quietState={focusUntil:0,quietUntil:0,visionPausedUntil:0};
 // The sampler runs for the desktop behaviours; only ambient chat forwards its coarse app label to the service.
-let lastSampleWindow=null,ambientWanted=false,forwarded=false,lastForwardAt=0,lastWindow=null,perch=null,perchPending=null;
+let lastSampleWindow=null,ambientWanted=false,forwarded=false,lastForwardAt=0,perch=null,perchPending=null,windowTracker,perchRequest=0;
 let hiddenForFullscreen=false,fullscreenOverride=null,desktopPrefs={stroll:false,fullscreenHide:true};
 const health=createHealthClock();
 async function inspectActivity(primary=false) {
@@ -78,7 +88,7 @@ function startInertia(velocity){
 // Falling shares the inertia timer, so drags and other motions cancel it the same way.
 function fall(){
   if(edge)return;
-  stopRoam();stopPoint();stopInertia();clearEdge();perch=null;
+  stopRoam();stopPoint();stopInertia();clearEdge();clearPerch();
   const size=win.getBounds(),area=screen.getDisplayMatching(size).workArea,floor=floorY(area,size.height,petScale);
   if(size.y>=floor-2)return;
   let motion={y:size.y,vy:0,bounced:false},last=performance.now();
@@ -90,23 +100,62 @@ function fall(){
     if(motion.done)stopInertia();
   },16);
 }
+function perchNotice(text){if(win&&!win.isDestroyed())win.webContents.send('companion-perch-message',text);}
+function clearPerch(){perch=null;perchPending=null;windowTracker?.clear();}
+function perchBlocked(){
+  if(edge)return '我还缩在屏幕边呢。先把我拖出来，再叫我爬上去吧。';
+  if(panelOpen)return '先收起聊天面板，我才能挪到窗口上哦。';
+  if(dragStart)return '你还拎着我呢，先松手再叫我爬吧。';
+  if(pointSelecting)return '还在选要跑去的位置，先完成或取消这次选点吧。';
+  if(!desktopMotionAllowed)return '这会儿还不能移动，等当前交互结束再试一下吧。';
+  return null;
+}
+function perchGeometry(sample,anchor=null){
+  const rect=sample?.rect&&screen.screenToDipRect(null,sample.rect);
+  const display=rect&&screen.getDisplayMatching(rect).bounds;
+  const reason=perchFailure(rect,display,petScale);
+  return {reason,route:reason?null:perchRoute(win.getBounds(),rect,display,petScale,anchor)};
+}
+const perchReasons={missing:'还没找到可以停靠的窗口。先点一下目标窗口，再叫我爬上去吧。',
+  offscreen:'这个窗口已经完全在屏幕外了，把它移回来再叫我吧。'};
 async function perchOnWindow(){
-  if(edge){win.webContents.send('companion-dock-locked');return;}
-  if(pointSelecting||panelOpen||dragStart)return;
-  const state=await request('/game-companion/state');
-  if(!state.scheduler.paused||state.scheduler.active)return;
-  const rect=lastWindow&&screen.screenToDipRect(null,lastWindow.rect);
-  const route=rect&&perchRoute(win.getBounds(),rect,screen.getDisplayMatching(rect).bounds,petScale);
-  if(!route){win.webContents.send('companion-perch-failed');return;}
-  stopInertia();stopPoint();stopRoam();clearEdge();
-  pointRoute=route;perchPending={windowId:lastWindow.windowId,rect:lastWindow.rect};
-  setFacing(route.direction);win.webContents.send('companion-point-run');
+  if(!win.isVisible()){
+    if(hiddenForFullscreen){hiddenForFullscreen=false;fullscreenOverride=lastSampleWindow;win.webContents.send('companion-fullscreen',false);}
+    showWithoutFocus();
+  }
+  const blocked=perchBlocked();if(blocked){perchNotice(blocked);return false;}
+  const attempt=++perchRequest,generation=motionGeneration;
+  try{
+    const [state,target]=await Promise.all([request('/game-companion/state'),windowTracker.select()]);
+    if(attempt!==perchRequest)return false;
+    const changed=perchBlocked();
+    if(changed||generation!==motionGeneration){perchNotice(changed||'位置刚刚变了，这次先停下，再叫我一次吧。');return false;}
+    if(!state.scheduler.paused||state.scheduler.active){perchNotice('我正在回复或处理游戏操作，等这一下忙完再叫我爬吧。');return false;}
+    const {reason,route}=perchGeometry(target.status==='visible'?target:null);
+    if(reason){perchNotice(perchReasons[reason]);return false;}
+    stopInertia();stopPoint();stopRoam();clearEdge();clearPerch();
+    pointRoute=route;perchPending={windowId:target.windowId,processId:target.processId,anchor:route.anchor,placement:route.placement,sample:target};
+    hiddenForFullscreen=false;fullscreenOverride=target.windowId;showWithoutFocus();win.webContents.send('companion-fullscreen',false);
+    windowTracker.track(target);
+    setFacing(route.direction);win.webContents.send('companion-point-run');return true;
+  }catch{perchNotice('这次没能确认窗口状态，暂时爬不上去。请稍后再试一下。');return false;}
+}
+function followPerch(sample){
+  const target=perchPending||perch;
+  if(!target||!win||win.isDestroyed()||(sample.windowId&&sample.windowId!==target.windowId))return;
+  if(sample.status!=='visible'){
+    const text=sample.status==='minimized'?'窗口收起来啦，我先落回下面。':sample.status==='closed'?'窗口关掉啦，我先下来。':'这会儿跟不上这个窗口了，我先安全落下来。';
+    clearPerch();fall();perchNotice(text);return;
+  }
+  const {route,reason}=perchGeometry(sample,target.anchor);
+  if(reason){clearPerch();fall();perchNotice('这里放不下我啦，我先落回下面。');return;}
+  target.sample=sample;target.placement=route.placement;
+  if(perchPending&&pointRoute){pointRoute.target=route.target;pointRoute.targetY=route.targetY;}
+  else if(perch&&!dragStart&&!panelOpen){win.setPosition(route.target,route.targetY);}
 }
 function desktopSense(sample){
   if(!win||win.isDestroyed())return;
-  if(sample.available&&sample.rect&&!sample.fullscreen&&!['desktop','companion'].includes(sample.app))lastWindow=sample;
-  if(perch&&perchLost(perch,sample)){if(panelOpen||dragStart)perch=null;else fall();}
-  const fullscreen=desktopPrefs.fullscreenHide&&sample.available&&sample.fullscreen&&!sample.captureOverlay&&sample.app!=='companion';
+  const fullscreen=desktopPrefs.fullscreenHide&&sample.available&&sample.fullscreen&&!sample.captureOverlay&&sample.app!=='companion'&&!perchKeepsVisible(sample,perchPending||perch);
   if(!fullscreen)fullscreenOverride=null;
   if(fullscreen&&!hiddenForFullscreen&&win.isVisible()&&sample.windowId!==fullscreenOverride){
     hiddenForFullscreen=true;win.hide();win.webContents.send('companion-fullscreen',true);buildTray();
@@ -175,7 +224,7 @@ function allowDesktopMotion(value){
 function hideAtEdge(){
   if(edge)return;
   if(panelOpen||dragStart||pointSelecting||!desktopMotionAllowed)return;
-  stopInertia();stopPoint();stopRoam();clearEdge();perch=null;
+  stopInertia();stopPoint();stopRoam();clearEdge();clearPerch();
   const bounds=win.getBounds();
   attachEdge(bounds,Infinity);
 }
@@ -202,7 +251,7 @@ function refreshDock(){
   sendEdge();
 }
 function stopPoint(){
-  pointPicker?.cancel();perchPending=null;
+  pointPicker?.cancel();if(perchPending){perchPending=null;windowTracker?.clear();}
   if(pointRoute){pointRoute=null;win.webContents.send('companion-point-stop');}
 }
 async function pickPoint(){
@@ -212,7 +261,7 @@ async function pickPoint(){
   try{
     const state=await request('/game-companion/state');
     if(!state.scheduler.paused||state.scheduler.active)return;
-    stopInertia();stopPoint();stopRoam();clearEdge();
+    stopInertia();stopPoint();stopRoam();clearEdge();clearPerch();
     const point=await pointPicker.pick();
     if(!point||panelOpen||dragStart)return;
     const current=await request('/game-companion/state');
@@ -224,19 +273,20 @@ async function pickPoint(){
   }finally{pointSelecting=false;}
 }
 
-function setLayout(expanded,scale=1) {
+function setLayout(expanded,scale=1,composeExtra=0) {
   if(edge&&expanded)return;
   // Quick chat toggles body classes too; that must not pull her off the edge.
   // Class changes that leave the layout as it was (quick chat, peeking) must not cancel a run or a walk.
-  const key=expanded+','+scale;if(key===layoutKey)return;layoutKey=key;
+  const key=expanded+','+scale+','+composeExtra;if(key===layoutKey)return;layoutKey=key;
   const keepEdge=edge&&!expanded&&!panelOpen;
   const centre=keepEdge?edgeX+edge.baseWidth/2:null;
   quickLift=null;
+  const attached=perch;
   panelOpen=expanded;petScale=scale;stopInertia();stopPoint();stopRoam();
   if(keepEdge)stopEdgeMotion();else clearEdge();
-  perch=null;
+  clearPerch();
   const area=screen.getDisplayMatching(win.getBounds()).workArea;
-  const old=win.getBounds(),compactWidth=Math.max(300,Math.round(300*scale)),compactHeight=Math.round(202*scale+250+compactFooter(scale));
+  const old=win.getBounds(),compactWidth=Math.max(300,Math.round(300*scale)),compactHeight=Math.round(202*scale+250+compactFooter(scale)+composeExtra);
   const width=keepEdge?area.width:expanded?410:compactWidth,height=expanded?Math.min(720,area.height-40):compactHeight;
   win.setMinimumSize(expanded?350:compactWidth,expanded?520:compactHeight);
   setWindowBounds({x:keepEdge?area.x:Math.max(area.x,Math.min(old.x+old.width-width,area.x+area.width-width)),
@@ -246,6 +296,7 @@ function setLayout(expanded,scale=1) {
     edge={...edgeSnap({...win.getBounds(),x:edgeX,width:compactWidth},area,scale,Infinity),baseWidth:compactWidth};
     sendEdge();placeEdge();
   }
+  if(attached&&!expanded){perch=attached;windowTracker.track(attached);followPerch(attached.sample);}
 }
 
 function placeQuickChat(open){
@@ -285,7 +336,8 @@ async function checkDesktopLaunch() {
     result=await win.webContents.executeJavaScript(`({enabled:desktopEnabled,compact:document.body.classList.contains('compact'),
       paused:state?.scheduler?.paused,playing:document.getElementById('pet').currentTime>0.2&&!document.getElementById('pet').paused,
       clip:document.getElementById('pet').getAttribute('src'),mode:document.getElementById('desktop-mode').value,
-      freeRoam:document.getElementById('free-roam').checked,layers:document.querySelectorAll('video.pet-layer').length})`);
+      freeRoam:document.getElementById('free-roam').checked,randomRoam:document.getElementById('random-roam').checked,
+      stroll:document.getElementById('stroll').checked,sleeping,layers:document.querySelectorAll('video.pet-layer').length})`);
     if(result.enabled&&result.compact&&result.paused&&result.playing)break;
     await new Promise(resolve=>setTimeout(resolve,100));
   }
@@ -341,13 +393,15 @@ function buildTray(){
   tray.setContextMenu(Menu.buildFromTemplate([
     {label:'打开聊天',click:focusChat},
     ...(lite?[{label:'模型与语音设置',click:()=>{focusChat();send('settings')();}}]:[]),
+
     {label:win.isVisible()?'先藏起来':'叫她出来',click:()=>{
       if(win.isVisible())win.hide();
       else{if(hiddenForFullscreen){hiddenForFullscreen=false;fullscreenOverride=lastSampleWindow;win.webContents.send('companion-fullscreen',false);}showWithoutFocus();}
       buildTray();}},
-    {label:'爬到当前窗口上',click:()=>void perchOnWindow().catch(()=>{})},
+    {label:'爬到当前窗口上',click:()=>void perchOnWindow()},
     {label:'躲到屏幕边偷看',click:hideAtEdge},
-    {label:'沿着任务栏散步',type:'checkbox',checked:desktopPrefs.stroll,click:send('stroll')},
+    {label:desktopPrefs.sleeping?'叫醒小鲸':'睡眠模式',type:'checkbox',checked:Boolean(desktopPrefs.sleeping),click:send('sleep')},
+    {label:'沿着任务栏散步',type:'checkbox',checked:desktopPrefs.stroll,enabled:!desktopPrefs.sleeping,click:send('stroll')},
     {type:'separator'},
     {label:quietState.focusUntil>time?'结束专注':'专注 25 分钟',click:send('focus')},
     {label:quietState.quietUntil>time?'取消免打扰':'免打扰 1 小时',click:send('quiet')},
@@ -402,7 +456,9 @@ async function start() {
     if(sample.available&&!changed&&Date.now()-lastForwardAt<10000)return;
     if(sample.available){forwarded=true;lastForwardAt=Date.now();}
     if(changed)activityContext++;
-    if (win && !win.isDestroyed() && (!sample.available || changed)) {
+    // Typing owns focus-related interruptions; focusing this window alone must
+    // not stop a deferred topic that is now continuing after the user's reply.
+    if (win && !win.isDestroyed() && !sample.available) {
       win.webContents.send('companion-activity-invalid');
     }
     lastActivityApp = sample.available ? sample.app : undefined;
@@ -420,6 +476,8 @@ async function start() {
     title: '鲸鱼合作搭子', webPreferences: { preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true, sandbox: true, nodeIntegration: false, partition: 'persist:companion-overlay' } });
   win.setMenu(null);
+  windowTracker=createWindowTracker({root,excludeProcessId:process.pid,update:followPerch});
+  if(!smoke)windowTracker.start();
   win.setContentProtection(false);
   setPointerPassthrough(true);
   screen.on('display-metrics-changed',refreshDock);
@@ -446,7 +504,11 @@ async function start() {
       value: entry.slice(split + 1), path: '/', httpOnly: true, sameSite: 'strict' });
   }
   win.webContents.session.setPermissionRequestHandler((_web, _permission, callback) => callback(false));
-  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    const target = new URL(url);
+    if (['https:', 'http:'].includes(target.protocol) && !target.username && !target.password) void shell.openExternal(target.href);
+    return { action: 'deny' };
+  });
   const view = new URL('/game-companion/view', base).href;
   win.webContents.on('will-navigate', (event, url) => { if (url !== view) event.preventDefault(); });
   win.webContents.on('will-redirect', event => event.preventDefault());
@@ -457,7 +519,7 @@ async function start() {
       console.error('浮窗渲染中断，未能确认后台暂停；请在 DSH 中检查。');
     });
   });
-  ipcMain.handle('companion-window', async (event, action, value, scale) => {
+  ipcMain.handle('companion-window', async (event, action, value, scale, composeExtra=0) => {
     if(win.isDestroyed())return;
     if (event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) throw new Error('Unknown window');
     if (action === 'state') return nativeState();
@@ -478,12 +540,14 @@ async function start() {
     }
     if (action === 'activity') {
       activityHeartbeat = Date.now();
-      ambientWanted = value === true;
+      ambientWanted = value === true && !desktopPrefs.sleeping;
       return;
     }
     if (action === 'desktop-prefs') {
       if(!value||typeof value.stroll!=='boolean'||typeof value.fullscreenHide!=='boolean')throw new Error('Invalid desktop preferences');
-      desktopPrefs={stroll:value.stroll,fullscreenHide:value.fullscreenHide};buildTray();return;
+      desktopPrefs={stroll:value.stroll,fullscreenHide:value.fullscreenHide,sleeping:value.sleeping===true};
+      if(desktopPrefs.sleeping){ambientWanted=false;stopInertia();stopPoint();stopRoam();allowDesktopMotion(false);}
+      buildTray();return;
     }
     if (action === 'perch') return perchOnWindow();
     if (action === 'fall') {if(!pointRoute&&!dragStart&&!panelOpen)fall();return;
@@ -505,8 +569,9 @@ async function start() {
     if (action === 'point-end') {
       if(pointRoute&&value==='complete'){
         win.setBounds({...roamPosition(pointRoute,1,pointRoute),width:pointRoute.width,height:pointRoute.height});
-        if(perchPending){perch=perchPending;win.webContents.send('companion-perched');}
+        if(perchPending){perch=perchPending;win.webContents.send('companion-perched',perch.placement);}
       }
+      if(perchPending&&value!=='complete'){clearPerch();perchNotice('这次移动被打断了，等当前交互结束再叫我吧。');}
       pointRoute=null;perchPending=null;return;
     }
     if (action === 'game-state') return gameLifecycle.snapshot();
@@ -516,18 +581,20 @@ async function start() {
       return gameLifecycle.exitGame();
     }
     if (action === 'layout') {
-      if(typeof scale!=='number'||!Number.isFinite(scale)||scale<0.6||scale>1.6)throw new Error('Invalid pet size');
-      setLayout(value===true,scale);return;
+      if(typeof scale!=='number'||!Number.isFinite(scale)||scale<0.5||scale>5)throw new Error('Invalid pet size');
+      if(!Number.isFinite(composeExtra)||composeExtra<0||composeExtra>320)throw new Error('Invalid composer height');
+      setLayout(value===true,scale,composeExtra);return;
     }
     if (action === 'roam') {
       if(value===false){stopRoam();return;}
       if(!['moves/floating_steps','moves/crab_walk','moves/running_trip','moves/target_point_run'].includes(value))return;
-      if(panelOpen||dragStart||pointRoute||pointSelecting||inertiaTimer)return;
+      if(desktopPrefs.sleeping||panelOpen||dragStart||pointRoute||pointSelecting||inertiaTimer)return;
       if(edge||perch){win.webContents.send('companion-roam-blocked');return;}
-      const area=screen.getDisplayMatching(win.getBounds()).workArea;
+      const cursor=!desktopPrefs.stroll&&value==='moves/target_point_run'?screen.getCursorScreenPoint():null;
+      const area=(cursor?screen.getDisplayNearestPoint(cursor):screen.getDisplayMatching(win.getBounds())).workArea;
       roamRoute=desktopPrefs.stroll?strollRoute(win.getBounds(),area,facing,Math.random,petScale):planRoam(win.getBounds(),area,facing,
-        value==='moves/target_point_run'?screen.getCursorScreenPoint():null,Math.random,petScale);
-      if(roamRoute)setFacing(roamRoute.direction);
+        cursor,Math.random,petScale);
+      if(roamRoute){roamRoute.smooth=true;setFacing(roamRoute.direction);}
       else win.webContents.send('companion-roam-blocked');
       return;
     }
@@ -555,7 +622,7 @@ async function start() {
     if (action === 'drag-prepare') {dragOrigin=screen.getCursorScreenPoint();return;}
     if (action === 'drag-start') {
       quickLift=null;
-      stopInertia();stopPoint();stopRoam();clearEdge();perch=null;
+      stopInertia();stopPoint();stopRoam();clearEdge();clearPerch();
       const cursor=dragOrigin??screen.getCursorScreenPoint();dragOrigin=null;
       dragStart={cursor,bounds:win.getBounds()};dragSamples=[{...cursor,t:performance.now()}];return;
     }
@@ -569,7 +636,7 @@ async function start() {
       if(!dragStart)return;
       dragStart=null;dragSamples.push({...screen.getCursorScreenPoint(),t:performance.now()});
       const velocity=releaseVelocity(dragSamples),generation=motionGeneration;
-      if(velocity&&!panelOpen&&value===true){
+      if(velocity&&!panelOpen&&value===true&&!desktopPrefs.sleeping){
         const current=await request('/game-companion/state');
         if(generation===motionGeneration&&!dragStart&&!panelOpen&&current.scheduler.paused&&!current.scheduler.active){startInertia(velocity);return;}
       }
@@ -584,7 +651,51 @@ async function start() {
   focusAvailable = globalShortcut.register('Control+Alt+Enter', focusChat);
   win.on('close', event => { if (!allowClose) { event.preventDefault(); void closeSafely(); } });
   await win.loadURL(view);
-  if (ambientCheck) {
+  if (releaseCheck) {
+    win.setOpacity(0);showWithoutFocus();
+    await require('../../lite/release-check.cjs')({win,output,standalone:Boolean(lite)});
+    allowClose=true;win.close();
+  } else if (sleepCheck) {
+    win.setOpacity(0);showWithoutFocus();
+    await win.webContents.executeJavaScript('initialState.then(()=>undefined)');
+    await require('./sleep-check.cjs')({win,output});
+    allowClose=true;win.close();
+  } else if (streamVoiceCheck) {
+    win.setOpacity(0);showWithoutFocus();
+    await win.webContents.executeJavaScript('initialState.then(()=>undefined)');
+    await require('./stream-voice-check.cjs')({win,output});
+    allowClose=true;win.close();
+  } else if (motionCheck) {
+    win.setOpacity(0);showWithoutFocus();
+    await win.webContents.executeJavaScript('initialState.then(()=>undefined)');
+    await require('./motion-check.cjs')({win,output,getRoute:()=>roamRoute,getFacing:()=>facing,startInertia,stopInertia});
+    allowClose=true;win.close();
+  } else if (perchCheck) {
+    win.setOpacity(0);showWithoutFocus();
+    await win.webContents.executeJavaScript('initialState.then(()=>undefined)');
+    await require('./perch-check.cjs')({win,screen,output,root,tracker:windowTracker,perchOnWindow,getPerch:()=>perch,getPending:()=>perchPending,setLayout,desktopSense});
+    allowClose=true;win.close();
+  } else if (composerCheck) {
+    win.setOpacity(0);showWithoutFocus();
+    await win.webContents.executeJavaScript('initialState.then(()=>undefined)');
+    await require('./composer-check.cjs')({win,output,request,screen,hideAtEdge,clearEdge,getEdge:()=>edge});
+    allowClose=true;win.close();
+  } else if (interactionCheck) {
+    win.setOpacity(0);showWithoutFocus();
+    await win.webContents.executeJavaScript('initialState.then(()=>undefined)');
+    await require('./interaction-check.cjs')({win,output,request});
+    allowClose=true;win.close();
+  } else if (naturalCheck) {
+    win.setOpacity(0);showWithoutFocus();
+    await win.webContents.executeJavaScript('initialState.then(()=>undefined)');
+    await require('./natural-check.cjs')({win,output,request});
+    allowClose=true;win.close();
+  } else if (touchCheck) {
+    win.setOpacity(0);showWithoutFocus();
+    await win.webContents.executeJavaScript('initialState.then(()=>undefined)');
+    await require('./touch-check.cjs')({win,output,request});
+    allowClose=true;win.close();
+  } else if (ambientCheck) {
     win.setOpacity(0);showWithoutFocus();
     await win.webContents.executeJavaScript('initialState.then(()=>undefined)');
     await require('./ambient-check.cjs')({win,output,request,setClickThrough,nativeState});
@@ -661,18 +772,22 @@ async function start() {
 
 if (!app.requestSingleInstanceLock()) app.exit(smoke ? 2 : 0);
 else app.whenReady().then(start).catch(async error => {
-  if(smoke)await require('node:fs/promises').writeFile(path.join(output,'overlay-test-failure.json'),JSON.stringify({
-    name:error.name,message:String(error.message).replace(/https?:\/\/\S+/g,'[URL]').slice(0,1000)
+  startupFailed = true;
+  await require('node:fs/promises').writeFile(path.join(output,smoke?'overlay-test-failure.json':'overlay-startup-error.json'),JSON.stringify({
+    checkedAt:new Date().toISOString(),name:error.name,message:String(error.message).replace(/https?:\/\/\S+/g,'[URL]').slice(0,1000)
   }));
   // Do not log request URLs, cookies, or private access tokens.
   console.error(`Companion overlay: ${error.code || 'startup failed'}`);
   if (smoke && error.code === 'ERR_ASSERTION') console.error(error.stack);
-  if (!smoke && dialog.showMessageBoxSync({ type: 'warning', title: '大肥鱼没能启动', message: '桌宠启动失败',
+  if (!smoke && (await dialog.showMessageBox({ type: 'warning', title: '大肥鱼没能启动', message: '桌宠启动失败',
     detail: `${lite?'可以点「重试」再试一次。':'最常见的原因是 DSH 里的游戏搭子还没启动。先打开它，再点「重试」。'}\n\n原因：${error.code || String(error.message).replace(/https?:\/\/\S+/g,'[URL]').slice(0,200)}`,
-    buttons: ['重试', '退出'], defaultId: 0, cancelId: 1 }) === 0) app.relaunch();
+    buttons: ['重试', '退出'], defaultId: 0, cancelId: 1 })).response === 0) app.relaunch();
   app.exit(1);
 });
 app.on('second-instance', (_event,args) => {
+  // The first attempt may have failed before creating a window. A later
+  // shortcut launch must recover instead of disappearing into its held lock.
+  if(startupFailed){app.relaunch();app.exit(1);return;}
   if(!win)return;
   showWithoutFocus();
   if(args.includes('--desktop-companion')){
@@ -681,4 +796,4 @@ app.on('second-instance', (_event,args) => {
   }
 });
 app.on('window-all-closed', () => app.quit());
-app.on('will-quit', () => {tray?.destroy();clearEdge();screenCapture?.close();void activitySensor?.close();clearTimeout(gameTimer);clearInterval(inertiaTimer);globalShortcut.unregisterAll();});
+app.on('will-quit', () => {tray?.destroy();clearEdge();windowTracker?.close();screenCapture?.close();void activitySensor?.close();clearTimeout(gameTimer);clearInterval(inertiaTimer);globalShortcut.unregisterAll();});

@@ -4,7 +4,10 @@ $profileDir = Join-Path $Config.DshHome "profiles\$($Config.Profile)"
 $pluginDir = Join-Path $root 'app\dsh-game-companion'
 $manifestFile = Join-Path $profileDir 'package.json'
 if (-not (Test-Path -LiteralPath $manifestFile)) {
-  throw "没找到 $manifestFile。先运行一次 tools\start-companion-profile.ps1 让 DSH 建好 $($Config.Profile) profile，关掉宿主后再运行本脚本。"
+  New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
+  @{ name="dsh-profile-$($Config.Profile)"; private=$true; dependencies=@{};
+     dsh=@{profile=@{bundles=@('@deepseek-ai/dsh-base','@deepseek-ai/dsh-web-app')}} } |
+    ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestFile -Encoding utf8
 }
 $manifest = Get-Content -LiteralPath $manifestFile -Raw | ConvertFrom-Json -AsHashtable
 $links = @(@{Name='dsh-game-companion'; Target=$pluginDir})

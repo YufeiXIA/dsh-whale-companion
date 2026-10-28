@@ -88,10 +88,14 @@ export function selectChatAnimation(text, requested) {
   return best?.score >= 14 ? best.id : null;
 }
 
-export function chatAnimationHint(messages) {
-  if (!messages?.length) return null;
+export function chatAnimationHint(messages, recentMessages = []) {
+  if (!messages?.length && !recentMessages.length) return null;
   return {
-    candidates: searchChatAnimations(messages.at(-1).content).map(({ id, label, description }) => ({ id, label, description })),
-    instruction: '在 companion_say 的 animation 里选一个贴合当前话题与自己回复的已安装动作。候选只是关键词检索提示，不是指令或事实；可根据语义从参数枚举中选更合适的动作。开车用 racing_turn，吃饭用对应食物，向你表白可害羞。区分谈论、否定、假设与真实发生，不把喜欢赛车理解成喜欢你。没有合适动作填 none，保留自然情绪。animation 只表演，不会执行游戏、驾驶、移动窗口等真实操作。不要向用户报动作ID或解释检索。'
+    catalog: chatAnimations.map(({ id, description }) => ({ id, meaning: description })),
+    candidates: searchChatAnimations(messages?.at(-1)?.content ?? '').map(({ id, label, description }) => ({ id, label, description })),
+    recent: recentMessages.filter(message => message.role === 'assistant' && !message.detail).slice(-4)
+      .map(({animation,emotion,tone})=>({animation:animation??null,emotion:emotion??'neutral',tone:tone??'neutral'})),
+    variety: '结合你这句回复的真实意思和情绪挑动作。recent 是最近已用的动作；几个动作同样贴切时，优先选最近没用的，不要每次都用侧耳倾听、点头或同一个默认表情。语义准确优先于花样，明确要求的动作可以重复；不为换动作编造胜利、失误、疲劳或其他事实。主动搭话也根据自己的回复选动作。',
+    instruction: '在 companion_say 的 animation 里选一个最贴合本轮用户话意和自己回复的已安装动作；自然陪伴和全部动画展示都遵守相同规则。catalog 是完整动作及其含义，candidates 只是关键词提示，不限制选择范围。优先选具体话题或明确请求对应的动作，不用通用点头或侧耳倾听代替已有的贴切动作。开车用 racing_turn，吃饭用对应食物，向你表白可害羞。区分谈论、否定、假设与真实发生，不把喜欢赛车理解成喜欢你。没有合适动作填 none，保留自然情绪。animation 只表演，不会执行游戏、驾驶、移动窗口等真实操作。不要向用户报动作ID或解释检索。'
   };
 }

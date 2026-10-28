@@ -1,4 +1,23 @@
 - insert:
+    - id: companion-web
+      name: "@deepseek-ai/dsh-web"
+    - id: companion-web-search
+      name: "@deepseek-ai/dsh-web-search-deepseek"
+      config:
+        maxUses: 1
+        maxTokens: 1500
+    - id: companion-web-fetch
+      name: "@deepseek-ai/dsh-web-fetch-http"
+      config:
+        timeoutMs: 15000
+    - id: companion-web-tools
+      name: "@deepseek-ai/dsh-tool-web"
+      config:
+        searchMaxQueries: 1
+        searchMaxResults: 5
+        searchTimeoutMs: 25000
+        fetchTimeoutMs: 15000
+        fetchMaxOutputChars: 12000
     - id: dsh-game-companion
       name: dsh-game-companion
       config:

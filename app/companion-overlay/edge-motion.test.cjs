@@ -20,7 +20,7 @@ function fixture(x=-60,y=200){
     win:{isDestroyed:()=>false,getBounds:()=>({...bounds}),setMinimumSize(){},
       setBounds:next=>{bounds={...next};changes.push({...bounds});},setPosition:(x,y)=>{bounds={...bounds,x,y};changes.push({...bounds});},
       webContents:{mainFrame:{},send:(...args)=>events.push(args)},show(){},focus(){},blur(){},setIgnoreMouseEvents(){}},
-    setFacing(){},stopInertia(){},stopPoint(){},stopRoam(){},buildTray(){},
+    setFacing(){},stopInertia(){},stopPoint(){},stopRoam(){},buildTray(){},clearPerch(){context.perch=null;},
     setClickThrough(value){context.clickThrough=value;},ipcMain:{handle:(_name,callback)=>{handler=callback;}}};
   const edgeFunctions=main.slice(main.indexOf('function clearEdge('),main.indexOf('function stopPoint('));
   const layoutFunctions=main.slice(main.indexOf('function setLayout('),main.indexOf('async function request('));

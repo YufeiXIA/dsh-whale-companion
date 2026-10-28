@@ -38,4 +38,4 @@ export const personalityExpressions = {
   "one_more_round": "聊到再来一局或收尾；不擅自恢复游戏或否定用户停止要求"
 };
 
-export const naturalPersonalityExpressions = ["sneaky_glance", "tail_mess", "manual_scroll", "tail_nap", "apron_treasures", "headphones_slip", "waterdrop_catch"];
+export const naturalPersonalityExpressions = ["sneaky_glance","tail_mess","manual_scroll","tail_nap","apron_treasures","headphones_slip","waterdrop_catch","casual_closer","rice_share","controller_search","hold_thought","saved_seat","knew_it_notes","snack_stubborn","flourish_retry","setup_pride","claimed_spot","care_disguised","reluctant_pillow"];

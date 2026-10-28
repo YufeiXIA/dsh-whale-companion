@@ -41,7 +41,7 @@ test('desktop activity uses a chat-only prompt, guarded voice line and preserves
   const length = f.host.messages.length;
   const repeated = JSON.parse(await f.registered.get('companion_say').execute({ text: '不要再说一次。', spoken: true }, {}));
   assert.equal(repeated.delivered, false); assert.equal(f.host.messages.length, length);
-  const changed = f.host.control({ action: 'ambient-sample', sample: { available: true, app: 'browser', idleMs: 0 } });
+  const changed = f.host.control({ action: 'ambient-sample', sample: { available: false } });
   await new Promise(resolve => setImmediate(resolve));
   assert.ok(f.host.scheduler.active.canceled);
   assert.ok(f.guards[0]({ name: 'companion_say' }));
@@ -53,6 +53,34 @@ test('desktop activity uses a chat-only prompt, guarded voice line and preserves
   await f.host.control({ action: 'ambient-settings', enabled: false });
   assert.equal(f.host.status().ambient.enabled, false);
   assert.equal(JSON.parse(await readFile(f.stateFile, 'utf8')).ambient.enabled, false);
+});
+
+test('ordinary chat knows screen permission and only receives recent authorized visual evidence',async t=>{
+  const f=await fixture(t),now=Date.now();
+  const perception=()=>JSON.parse(f.host.prompt({kind:'chat',messages:[]}).content[0].text).perception;
+  f.host.recentVisuals=[{summary:'已授权的测试画面',capturedAt:now}];
+  assert.equal(perception().screenCapability,true);
+  assert.equal(perception().screenEnabled,false);
+  assert.equal(perception().lastScreen,null);
+  f.host.ambient.configure(true,{visionEnabled:true});
+  assert.equal(perception().screenEnabled,true);
+  assert.equal(perception().lastScreen.summary,'已授权的测试画面');
+  assert.match(perception().instruction,/不要笼统声称自己看不到桌面/);
+  f.host.recentVisuals[0].capturedAt=now-16*60000;
+  assert.equal(perception().lastScreen,null);
+  assert.equal(perception().lastAttemptStatus,'not-yet-captured');
+});
+
+test('samples during slow agent creation keep the current ambient request alive',async t=>{
+  const gate=deferred();t.after(()=>gate.resolve());
+  const f=await fixture(t,{createGate:gate});
+  f.host.ambient.nextAt=Date.now();
+  await f.host.desktopSample({available:true,app:'code',idleMs:0});
+  await new Promise(resolve=>setImmediate(resolve));
+  await f.host.desktopSample({available:true,app:'browser',idleMs:0});
+  assert.equal(f.host.scheduler.active.canceled,false);
+  gate.resolve();await f.host.scheduler.whenIdle();
+  assert.ok(f.calls.some(([kind])=>kind==='followup'));
 });
 
 test('proactive context combines recent screens and fresh game facts without treating old scenes as current',async t=>{
@@ -82,7 +110,7 @@ test('a final-only proactive paragraph is delivered once, while stale text and t
     f.host.ambient.nextAt=time;f.host.ambient.lastUserAt=time-60000;
     f.agent.whenIdle=async()=>{
       if(emitted)return;emitted=true;
-      if(mode==='stale')f.host.ambient.sample({available:true,app:'browser',idleMs:0});
+      if(mode==='stale')f.host.ambient.sample({available:false});
       if(mode==='tool-first')await f.registered.get('companion_say').execute({text:'工具已经说过这句。',spoken:true},{});
       f.emit({type:'assistant/message',data:{message:{content:[{type:'text',text:'这页里蓝鲸和小磷虾的体型差别真大，看着还有点可爱。你刚才说想看海，我也想跟着多看一会儿。'}]}}});
     };
@@ -95,24 +123,58 @@ test('a final-only proactive paragraph is delivered once, while stale text and t
   });
 });
 
-test('vision capture requires an expiring single-use ticket; context changes cancel it without game actions',async t=>{
+test('vision capture requires an expiring single-use ticket; lock cancels it without game actions',async t=>{
   const f=await fixture(t);let time=Date.now();
   f.host.ambient=new AmbientCompanion({visionOptIn:true}, {now:()=>time,random:()=>0});
   f.host.ambient.nextAt=time;f.host.ambient.lastUserAt=time-60000;
   let result;
   for(let i=0;i<6;i++){
-    result=await f.host.desktopSample({available:true,app:'browser',idleMs:0,contextKey:1,captureSupported:true});
+    const sampled = await f.host.desktopSample({available:true,app:'browser',idleMs:0,contextKey:1,captureSupported:true});
+    result ??= sampled;
     time+=10000;
   }
   assert.ok(result.capture?.ticket);assert.equal(f.calls.some(([kind])=>kind==='followup'),false);
   assert.deepEqual(await f.host.desktopFrame({ticket:'foreign',jpeg:'bad'}),{accepted:false});
-  await f.host.desktopSample({available:true,app:'browser',idleMs:0,contextKey:2,captureSupported:true});
+  await f.host.desktopSample({available:false});
   assert.deepEqual(await f.host.desktopFrame({ticket:result.capture.ticket,unavailable:true}),{accepted:false});
   assert.equal(f.host.pendingVision,null);assert.equal(f.runtime.requests.includes('POST'),false);
-  await f.host.control({action:'ambient-settings',minMinutes:2,maxMinutes:5,visionEnabled:false});
-  assert.equal(f.host.status().ambient.minMinutes,2);assert.equal(f.host.status().ambient.visionEnabled,false);
+  await f.host.control({action:'ambient-settings',intervalMinutes:2,visionEnabled:false});
+  assert.equal(f.host.status().ambient.intervalMinutes,2);assert.equal(f.host.status().ambient.visionEnabled,false);
   const stored=JSON.parse(await readFile(f.stateFile,'utf8'));
-  assert.equal(stored.ambient.maxMinutes,5);assert.equal(JSON.stringify(stored).includes('base64'),false);
+  assert.equal(stored.ambient.intervalMinutes,2);assert.equal(JSON.stringify(stored).includes('base64'),false);
+});
+
+test('proactive screenshot topic reaches the exact-query gate and sourced speech; private frames cannot search',async t=>{
+  for(const sensitive of [false,true])await t.test(sensitive?'private frame':'public frame',async t=>{
+    const f=await fixture(t),gate=deferred(),originalFetch=globalThis.fetch,oldKey=process.env.DEEPSEEK_API_KEY;
+    t.after(()=>gate.resolve());f.agent.whenIdle=()=>gate.promise;
+    process.env.DEEPSEEK_API_KEY='test';t.after(()=>{if(oldKey===undefined)delete process.env.DEEPSEEK_API_KEY;else process.env.DEEPSEEK_API_KEY=oldKey;});
+    t.mock.method(globalThis,'fetch',async(url,options)=>{
+      if(String(url)!=='https://api.deepseek.com/chat/completions')return originalFetch(url,options);
+      return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({summary:'公开自然百科的蓝鲸页面',sensitive,searchTopic:{category:'nature',topic:'蓝鲸',public:true}})}}]})};
+    });
+    let time=Date.now(),capture;
+    f.host.ambient=new AmbientCompanion({visionOptIn:true},{now:()=>time});f.host.ambient.nextAt=time;
+    for(let i=0;i<6;i++){const result=await f.host.desktopSample({available:true,app:'browser',idleMs:0,captureSupported:true});if(result.capture)capture=result.capture;time+=10000;}
+    assert.ok(capture);
+    await f.host.desktopFrame({ticket:capture.ticket,jpeg:Buffer.from([255,216,255,217]).toString('base64'),sourceApp:'browser'});
+    for(let i=0;i<50&&!f.calls.some(([kind])=>kind==='followup');i++)await new Promise(resolve=>setTimeout(resolve,5));
+    const prompt=JSON.parse(f.calls.find(([kind])=>kind==='followup')[1].content[0].text);
+    assert.equal(prompt.web_research.allowed,!sensitive);
+    const query={name:'web_search',arguments:{queries:['蓝鲸 趣闻']}};
+    if(sensitive){assert.ok(f.guards[0](query));assert.deepEqual(prompt.web_research.queries,[]);}
+    else{
+      assert.equal(f.guards[0](query),undefined);
+      f.emitToolResult(query,{isError:false,value:{sources:[{url:'https://example.org/blue-whale',title:'Blue whale'}]}});
+      await f.registered.get('companion_say').execute({text:'刚才看到蓝鲸，顺手找了点相关趣闻。',spoken:true},{});
+      const line=f.host.messages.at(-1);assert.equal(line.ambient,true);assert.equal(line.spoken,true);assert.equal(line.sources.length,1);
+      const disabling=f.host.control({action:'ambient-settings',visionEnabled:false});
+      await new Promise(resolve=>setImmediate(resolve));
+      assert.ok(f.guards[0]({name:'web_fetch',arguments:{url:'https://example.org/blue-whale'}}));
+      gate.resolve();await disabling;
+    }
+    gate.resolve();await f.host.scheduler.whenIdle();
+  });
 });
 
 test('vision cancellation aborts pending work immediately without changing saved settings, even while switching chats',async t=>{
@@ -143,7 +205,8 @@ test('an unclassified window reaches proactive chat and an unavailable frame doe
   f.host.ambient.nextAt=time;f.host.ambient.lastUserAt=time-60000;
   let result;
   for(let i=0;i<6;i++){
-    result=await f.host.desktopSample({available:true,app:'other',idleMs:600000,contextKey:1,captureSupported:true});
+    const sampled = await f.host.desktopSample({available:true,app:'other',idleMs:600000,contextKey:1,captureSupported:true});
+    result ??= sampled;
     time+=10000;
   }
   assert.ok(result.capture?.ticket);
@@ -164,6 +227,169 @@ test('an unclassified window reaches proactive chat and an unavailable frame doe
 });
 
 const identity = { instance_id: 'test-instance', run_id: 'test-run', local_player_id: 'whale' };
+test('explicit image chat carries recognized details into its prompt and recent context without persisting image bytes',async t=>{
+  const f=await fixture(t),originalFetch=globalThis.fetch,oldKey=process.env.DEEPSEEK_API_KEY;
+  process.env.DEEPSEEK_API_KEY='test';t.after(()=>{if(oldKey===undefined)delete process.env.DEEPSEEK_API_KEY;else process.env.DEEPSEEK_API_KEY=oldKey;});
+  let visionCalls=0;
+  t.mock.method(globalThis,'fetch',async(url,options)=>{
+    if(String(url)!=='https://api.deepseek.com/chat/completions')return originalFetch(url,options);
+    visionCalls++;const body=JSON.parse(options.body);
+    assert.match(body.messages[1].content[0].text,/哪个是蓝色/);
+    return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({summary:'左边是蓝色圆形，右边是橙色三角形。',sensitive:false})}}]})};
+  });
+  const jpeg=Buffer.from([255,216,255,217]).toString('base64');
+  await f.host.control({action:'chat',text:'哪个是蓝色？',image:{jpeg}});await f.host.scheduler.whenIdle();
+  assert.equal(visionCalls,1);assert.equal(f.host.ambient.visionEnabled,false);
+  const prompt=JSON.parse(f.calls.find(([name])=>name==='followup')[1].content[0].text);
+  assert.equal(prompt.uploaded_images[0].source,'user-upload');assert.match(prompt.uploaded_images[0].summary,/蓝色圆形/);
+  assert.match(JSON.stringify(prompt.memory.recent),/蓝色圆形/);
+  const saved=await readFile(f.stateFile,'utf8');assert.equal(saved.includes(jpeg),false);assert.equal(saved.includes('蓝色圆形'),true);
+  await assert.rejects(()=>f.host.control({action:'chat',text:'',image:{jpeg:'not-an-image'}}),/图片格式无效/);
+});
+
+test('a failed or superseded image request cannot send a ghost message or leak into a new conversation',async t=>{
+  for(const mode of ['failure','chat','switch'])await t.test(mode,async t=>{
+    const f=await fixture(t),originalFetch=globalThis.fetch,oldKey=process.env.DEEPSEEK_API_KEY,gate=deferred();
+    process.env.DEEPSEEK_API_KEY='test';t.after(()=>{gate.resolve();if(oldKey===undefined)delete process.env.DEEPSEEK_API_KEY;else process.env.DEEPSEEK_API_KEY=oldKey;});
+    t.mock.method(globalThis,'fetch',async(url,options)=>{
+      if(String(url)!=='https://api.deepseek.com/chat/completions')return originalFetch(url,options);
+      await gate.promise;
+      if(mode==='failure')return {ok:false,status:503};
+      return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({summary:'不能串到新对话里的旧图片',sensitive:false})}}]})};
+    });
+    const pending=f.host.control({action:'chat',text:'',image:{jpeg:Buffer.from([255,216,255,217]).toString('base64')}});
+    const rejected=assert.rejects(pending);
+    assert.ok(f.host.chatImageAbort);
+    f.host.ambient.nextAt=Date.now();
+    assert.equal((await f.host.desktopSample({available:true,app:'browser',idleMs:0,captureSupported:true})).capture,undefined);
+    if(mode==='chat')await f.host.control({action:'chat',text:'先看这个新问题'});
+    if(mode==='switch')await f.host.control({action:'new-conversation'});
+    gate.resolve();await rejected;await f.host.scheduler.whenIdle();
+    assert.equal(f.host.messages.some(message=>message.image),false);assert.equal(f.host.chatImageAbort,null);
+    assert.equal(f.host.messages.filter(message=>message.role==='user').length,mode==='chat'?1:0);
+  });
+});
+
+test('interrupted proactive speech waits for the user answer and its playback, then regenerates once with new context',async t=>{
+  const f=await fixture(t);f.host.ambient.nextAt=Date.now();
+  const event=f.host.ambient.sample({available:true,app:'browser',idleMs:0});
+  event.visual={summary:'之前看到的测试页面',capturedAt:Date.now()};
+  f.host.lastAmbientEvent=event;f.host.lastAmbientMessageId='old-ambient';
+  f.host.messages.push({id:'old-ambient',role:'assistant',ambient:true,text:'我刚才想聊的旧话题',at:Date.now(),spoken:true});
+  let sequence=0;
+  const report=(extra={})=>f.host.control({action:'interaction-state',sessionId:f.host.sessionId,reportedAt:++sequence,typing:false,speaking:false,...extra});
+  await report({typing:true,interruptedId:'old-ambient'});
+  assert.equal(f.host.deferredAmbient.text,'我刚才想聊的旧话题');
+  assert.equal((await f.host.desktopSample({available:true,app:'browser',idleMs:0,captureSupported:true})).capture,undefined);
+  f.agent.whenIdle=async()=>{
+    const resumed=f.host.ambientTurn;
+    if(resumed){
+      await f.host.desktopSample({available:true,app:'companion',idleMs:0});
+      assert.equal(f.host.deferredAmbient,null,'focus in the input must not requeue the resumed turn');
+    }
+    await f.registered.get('companion_say').execute({text:resumed?'结合刚才的新回复，再接回旧话题。':'先认真回答你刚发来的问题。',spoken:true},{});
+  };
+  await f.host.control({action:'chat',text:'先回答我这个新的问题'});await f.host.scheduler.whenIdle();
+  const reply=f.host.messages.at(-1);assert.equal(reply.ambient,undefined);
+  assert.equal(f.host.deferredAmbient.phase,'ready');f.host.deferredAmbient.readyAt=0;
+  await f.host.desktopSample({available:true,app:'companion',idleMs:0});
+  await report({speaking:true,seenReplyId:reply.id});assert.equal(f.host.scheduler.active,null);
+  await report({seenReplyId:'not-rendered-yet'});assert.equal(f.host.scheduler.active,null);
+  await report({seenReplyId:reply.id});await f.host.scheduler.whenIdle();
+  const resumed=f.host.messages.at(-1);assert.equal(resumed.ambient,true);assert.equal(resumed.spoken,true);
+  const prompt=JSON.parse(f.calls.filter(([name])=>name==='followup').at(-1)[1].content[0].text);
+  assert.equal(prompt.environment.interrupted.text,'我刚才想聊的旧话题');
+  assert.match(JSON.stringify(prompt.memory),/先回答我这个新的问题/);
+  assert.equal(f.host.deferredAmbient,null);
+  await report({seenReplyId:reply.id});await f.host.scheduler.whenIdle();
+  assert.equal(f.host.messages.at(-1).id,resumed.id,'heartbeat must not replay the deferred topic');
+});
+
+test('typing invalidates pending vision, stale heartbeats cannot release it, and privacy-off clears deferred context',async t=>{
+  const f=await fixture(t);f.host.ambient.configure(true,{visionEnabled:true});f.host.ambient.nextAt=Date.now();
+  const sample=await f.host.desktopSample({available:true,app:'browser',idleMs:0,captureSupported:true});assert.ok(sample.capture);
+  await f.host.control({action:'interaction-state',sessionId:f.host.sessionId,reportedAt:2,typing:true,speaking:false});
+  assert.equal(f.host.pendingVision,null);assert.ok(f.host.deferredAmbient);
+  await f.host.control({action:'interaction-state',sessionId:f.host.sessionId,reportedAt:1,typing:false,speaking:false});
+  assert.equal(f.host.interaction.typing,true);
+  assert.equal((await f.host.desktopFrame({ticket:sample.capture.ticket,unavailable:true})).accepted,false);
+  f.host.lastAmbientEvent=f.host.deferredAmbient.event;f.host.lastAmbientMessageId='stale-visual';
+  f.host.messages.push({id:'stale-visual',role:'assistant',ambient:true,text:'旧画面',at:Date.now()});
+  await f.host.control({action:'ambient-settings',visionEnabled:false});assert.equal(f.host.deferredAmbient,null);
+  await f.host.control({action:'interaction-state',sessionId:f.host.sessionId,reportedAt:3,typing:true,speaking:false,interruptedId:'stale-visual'});
+  assert.equal(f.host.deferredAmbient,null,'a late renderer interruption cannot restore revoked visual context');
+});
+
+test('typing cancels active proactive generation and an abandoned draft resumes only once after the grace period',async t=>{
+  const f=await fixture(t),gate=deferred();t.after(()=>gate.resolve());
+  f.agent.whenIdle=()=>gate.promise;
+  f.host.ambient.nextAt=Date.now();
+  await f.host.desktopSample({available:true,app:'browser',idleMs:0});
+  for(let i=0;i<100&&!f.calls.some(([name])=>name==='followup');i++)await new Promise(resolve=>setTimeout(resolve,5));
+  assert.equal(f.host.scheduler.active.kind,'ambient');
+  const report=(reportedAt,typing)=>f.host.control({action:'interaction-state',sessionId:f.host.sessionId,reportedAt,typing,speaking:false});
+  await report(1,true);
+  assert.equal(f.host.scheduler.active.canceled,true);assert.equal(f.host.deferredAmbient.phase,'draft');
+  gate.resolve();await f.host.scheduler.whenIdle();
+  await report(2,false);assert.equal(f.host.scheduler.active,null);
+  f.host.deferredAmbient.readyAt=0;
+  await report(3,false);await f.host.scheduler.whenIdle();
+  assert.equal(f.host.deferredAmbient,null);
+  assert.equal(f.calls.filter(([name])=>name==='followup').length,2);
+  await report(4,false);await f.host.scheduler.whenIdle();
+  assert.equal(f.calls.filter(([name])=>name==='followup').length,2);
+});
+
+test('a direct turn without a new answer cannot release the interrupted topic using an older answer',async t=>{
+  const f=await fixture(t);f.host.ambient.nextAt=Date.now();
+  const event=f.host.ambient.sample({available:true,app:'browser',idleMs:0});
+  f.host.deferredAmbient={event,phase:'draft',readyAt:0};
+  f.host.messages.push({id:'older-answer',role:'assistant',text:'以前的回答',at:Date.now()-60000});
+  await f.host.control({action:'chat',text:'新的问题'});await f.host.scheduler.whenIdle();
+  assert.equal(f.host.deferredAmbient.phase,'reply');assert.equal(f.host.deferredAmbient.replyId,undefined);
+});
+
+test('missing Stardew install does not prevent startup or paused desktop chat', async t => {
+  const f = await fixture(t, { saved: { game: 'stardew' } });
+  assert.equal(f.host.status().error, 'STARDEW_NOT_CONFIGURED');
+  assert.equal(f.host.scheduler.actionsAllowed, false);
+  await f.host.control({ action: 'chat', text: '先聊会儿' });
+  await f.host.scheduler.whenIdle();
+  assert.ok(f.calls.some(([name]) => name === 'followup'));
+  assert.equal(f.runtime.requests.length, 0);
+});
+
+test('game switch clears old binding, keeps conversation, and gates farm/card tools', async t => {
+  const f = await fixture(t);
+  await f.host.control({ action: 'chat', text: '记住：我喜欢星露谷' }); await f.host.scheduler.whenIdle();
+  const sessionId = f.host.sessionId, messages = [...f.host.messages];
+  await f.host.control({ action: 'bind', binding: identity });
+  const state = await f.host.control({ action: 'select-game', game: 'stardew' }); clearTimeout(f.host.timer);
+  assert.equal(state.game, 'stardew'); assert.equal(state.bindingConfirmed, false);
+  assert.equal(state.scheduler.paused, true); assert.equal(f.host.sessionId, sessionId);
+  assert.deepEqual(f.host.messages, messages);
+  assert.ok(f.guards[0]({ name: 'game_act' }));
+  assert.equal(f.guards[0]({ name: 'farm_act' }), undefined);
+  assert.equal(JSON.parse(await readFile(f.stateFile, 'utf8')).game, 'stardew');
+  await f.host.control({ action: 'select-game', game: 'sts2' }); clearTimeout(f.host.timer);
+  assert.equal(f.host.bindingConfirmed, false);
+  assert.ok(f.guards[0]({ name: 'farm_act' }));
+});
+
+test('farm chat includes current farm context and physical pause runs without an active model turn', async t => {
+  const f = await fixture(t); f.host.game = 'stardew';
+  const o = { game: 'stardew', versionKey: 'farm:1', actionable: false, phase: 'working', guard: {},
+    state: { farm: { location: 'Farm', day: 1, farm: { dryCrops: 3 } }, pending: { action: 'water' } } };
+  f.host.lastObservation = o; f.host.lastObservationAt = Date.now(); f.host.bindingConfirmed = true;
+  f.host.scheduler.reconcile(o);
+  const prompt = JSON.parse(f.host.prompt({ kind: 'chat', messages: [{ content: '你浇水我去钓鱼' }] }).content[0].text);
+  assert.equal(prompt.observation.state.pending.action, 'water');
+  assert.equal(prompt.strategy.game, '星露谷物语'); assert.match(prompt.instruction, /farm_act/);
+  assert.equal(f.host.ambientContext({}).recent_game.working, 'water');
+  let pauses = 0; f.host.adapter.setPaused = async value => { assert.equal(value, true); pauses++; };
+  await f.host.control({ action: 'pause' }); assert.equal(pauses, 1);
+});
+
 test('chat animation travels from prompt/tool to saved message without changing voice emotion', async t=>{
   const f=await fixture(t);
   await f.host.ensureAgent();
@@ -296,8 +522,26 @@ async function fixture(t, { saved, createGate, events = [], consume = true, onCr
   return { host, runtime, calls, registered, guards, sections, variables, stateFile, agent, ctx, emit, stream,
     preStep: decision => listeners.get('agent/pre-step')(decision, async () => ({ kind: 'enter' })),
     requestConfig: config => listeners.get('agent/request')({}, async () => Object.freeze(config)),
-    emitError: error => listeners.get('agent/error')({ agent, error }) };
+    emitError: error => listeners.get('agent/error')({ agent, error }),
+    emitToolResult: (exec, result) => listeners.get('tools/result')(exec, result) };
 }
+
+test('research sources attach to the actual reply, persist and clear for the next turn', async t => {
+  const f=await fixture(t);
+  await f.host.control({action:'chat',text:'查一下官方资料'});await f.host.scheduler.whenIdle();
+  const prompt=JSON.parse(f.calls.find(([kind])=>kind==='followup')[1].content[0].text);
+  assert.equal(prompt.web_research.allowed,true);
+  f.emitToolResult({name:'web_search'},{isError:false,value:{sources:[{url:'https://example.org/',title:'Official source'}]}});
+  await f.registered.get('companion_say').execute({text:'找到了，来源放在下面。',spoken:true},{});
+  assert.equal(f.host.messages.at(-1).sources[0].url,'https://example.org/');
+  assert.equal(f.host.messages.at(-1).text.includes('https:'),false);
+  await f.host.save();
+  assert.equal(JSON.parse(await readFile(f.stateFile,'utf8')).messages.at(-1).sources.length,1);
+  await f.host.control({action:'chat',text:'今天吃什么'});await f.host.scheduler.whenIdle();
+  assert.deepEqual(f.host.webSources,[]);assert.equal(f.host.webCalls,0);
+  await f.registered.get('companion_say').execute({text:'想吃一碗饭。',spoken:true},{});
+  assert.equal(f.host.messages.at(-1).sources,undefined);
+});
 
 test('fresh host is paused/unbound; paused chat creates one scoped agent without game POST', async t => {
   const f = await fixture(t);
@@ -313,8 +557,8 @@ test('fresh host is paused/unbound; paused chat creates one scoped agent without
   assert.ok(prompt.id); assert.equal(prompt.role, 'user');
   assert.equal(prompt.source.kind, 'plugin:dsh-game-companion');
   assert.equal(f.runtime.requests.includes('POST'), false);
-  assert.deepEqual(new Set(f.registered.keys()), new Set(['game_observe', 'game_act', 'game_lookup', 'game_plan', 'game_notes', 'game_advise', 'game_review', 'companion_say', 'companion_task']));
-  assert.deepEqual(f.calls.find(([name]) => name === 'restrict')[1], { allow: [] });
+  assert.deepEqual(new Set(f.registered.keys()), new Set(['game_observe', 'game_act', 'game_lookup', 'game_plan', 'game_notes', 'game_advise', 'game_review', 'companion_say', 'companion_task', 'farm_act', 'farm_cancel', 'companion_recall']));
+  assert.deepEqual(f.calls.find(([name]) => name === 'restrict')[1], { allow: ['web_search', 'web_fetch'] });
   assert.ok(f.guards[0]({ name: 'shell' }));
   assert.match(f.sections[0].text, /本鲸陪你合作/);
   assert.equal(f.host.scheduler.actionsAllowed, false);
@@ -323,6 +567,50 @@ test('fresh host is paused/unbound; paused chat creates one scoped agent without
   const count = f.host.messages.length;
   f.emit({ type: 'assistant/message', seq: 9, data: { message: { content: [{ type: 'text', text: '本鲸在呢。' }] } } });
   assert.equal(f.host.messages.length, count);
+});
+
+test('full chat survives display truncation, cross-session recall, restart and deletion', async t => {
+  const f = await fixture(t);
+  await f.host.control({ action: 'chat', text: '我在青禾大学读计算机博士。' });
+  await f.host.scheduler.whenIdle();
+  const first = f.host.messages[0], oldId = f.host.sessionId;
+  for (let i = 0; i < 110; i++) f.host.say(`第${i}条日常回复`);
+  await f.host.control({ action: 'chat', text: '还记得我的学历吗？' });
+  await f.host.scheduler.whenIdle();
+  assert.equal(f.host.status().messages.length, 100);
+  assert.equal(f.host.messages.length, 112);
+  const prompt = JSON.parse(f.calls.filter(([kind]) => kind === 'followup').at(-1)[1].content[0].text);
+  assert.ok(prompt.history.recalled.some(hit => hit.message_id === first.id && hit.text.includes('青禾大学')));
+  await f.host.control({ action: 'new-conversation' });
+  const restarted = await fixture(t, { saved: JSON.parse(await readFile(f.stateFile, 'utf8')) });
+  await restarted.host.ensureAgent();
+  const recall = async args => JSON.parse(await restarted.registered.get('companion_recall').execute(args, {}));
+  const result = await recall({ operation: 'search', query: '学历' });
+  assert.ok(result.matches.some(hit => hit.message_id === first.id && hit.session_id === oldId));
+  assert.equal((await recall({ operation: 'read', session_id: oldId, message_id: first.id })).text, first.text);
+  restarted.host.game = 'stardew';
+  assert.equal(restarted.guards[0]({ name: 'companion_recall' }), undefined);
+  restarted.host.ambientTurn = true; restarted.host.replyRequest = { environment: {} };
+  const valid = restarted.host.ambient.valid; restarted.host.ambient.valid = () => true;
+  assert.equal(restarted.guards[0]({ name: 'companion_recall' }), undefined);
+  restarted.host.ambient.valid = () => false;
+  assert.ok(restarted.guards[0]({ name: 'companion_recall' }));
+  restarted.host.ambient.valid = valid; restarted.host.ambientTurn = false;
+  await restarted.host.control({ action: 'delete-conversation', sessionId: oldId });
+  assert.deepEqual((await recall({ operation: 'search', query: '学历' })).matches, []);
+  assert.equal((await recall({ operation: 'read', session_id: oldId, message_id: first.id })).found, false);
+  assert.equal(f.runtime.requests.includes('POST'), false);
+});
+
+test('archive retrieval cannot restore a preference removed through the memory panel', async t => {
+  const f = await fixture(t);
+  await f.host.control({ action: 'chat', text: '我喜欢蓝莓' });
+  await f.host.scheduler.whenIdle();
+  const id = f.host.personalMemory.entries[0].id;
+  await f.host.control({ action: 'forget-memory', id });
+  await f.host.control({ action: 'new-conversation' });
+  const restarted = await fixture(t, { saved: JSON.parse(await readFile(f.stateFile, 'utf8')) });
+  assert.deepEqual(restarted.host.recall({ operation: 'search', query: '蓝莓' }).matches, []);
 });
 
 test('new conversation archives chat and retains explicit personal preferences in an isolated model session', async t => {
@@ -377,6 +665,54 @@ test('personal corrections and forgetting survive new chat, old-chat switching a
   const prompt = restarted.host.prompt({ kind: 'chat', messages: [{ content: '你好' }] });
   assert.deepEqual(JSON.parse(prompt.content[0].text).memory.preferences, []);
   assert.equal(f.runtime.requests.includes('POST'), false);
+});
+
+test('what she calls the user is set from the panel, cleaned, read at every request and kept across restart', async t => {
+  const f = await fixture(t);
+  assert.equal(f.host.status().userTitle, '你');
+  await f.host.control({ action: 'chat', text: '在吗' });
+  await f.host.scheduler.whenIdle();
+  const section = f.sections.find(item => item.name === 'companion:user-title');
+  assert.match(section.text, /\{\{companion_user_title\}\}/);
+  assert.notEqual(section.interpolate, false);
+  assert.equal(f.variables.get('companion_user_title')(), '你');
+  await f.host.control({ action: 'user-title', title: ' 主人{{x}}\n【' });
+  assert.equal(f.host.status().userTitle, '主人x');
+  assert.equal(f.variables.get('companion_user_title')(), '主人x', 'the open session picks up the new title');
+  await f.host.control({ action: 'user-title', title: '   ' });
+  assert.equal(f.host.status().userTitle, '你');
+  await f.host.control({ action: 'user-title', title: '阿明' });
+  const restarted = await fixture(t, { saved: JSON.parse(await readFile(f.stateFile, 'utf8')) });
+  assert.equal(restarted.host.status().userTitle, '阿明');
+  const prompt = JSON.parse(restarted.host.prompt({ kind: 'chat', messages: [{ content: '几点了' }] }).content[0].text);
+  assert.match(prompt.time, /\d{1,2}:\d{2}/, 'each turn carries the local time');
+});
+
+test('reply length is chosen in the panel, steers the chat prompt and spoken limit, and survives restart', async t => {
+  const f = await fixture(t);
+  const style = host => JSON.parse(host.prompt({ kind: 'chat', messages: [{ content: '在吗' }] }).content[0].text).response_style;
+  assert.equal(f.host.status().replyLength, 'medium');
+  assert.match(style(f.host), /30～120字，最多180字/);
+  await f.host.control({ action: 'reply-length', length: 'long' });
+  assert.match(style(f.host), /80～200字，最多300字/);
+  f.host.replyingToUser = true;
+  assert.equal(f.host.say('长'.repeat(260), 'neutral', null, true).spoken, true, 'a long reply is still spoken');
+  await f.host.control({ action: 'reply-length', length: 'huge' });
+  assert.equal(f.host.status().replyLength, 'medium', 'unknown values fall back to medium');
+  await f.host.control({ action: 'reply-length', length: 'short' });
+  const restarted = await fixture(t, { saved: JSON.parse(await readFile(f.stateFile, 'utf8')) });
+  assert.equal(restarted.host.status().replyLength, 'short');
+  assert.match(style(restarted.host), /最多100字/);
+});
+
+test('a reply keeps a valid voice tone, drops an unknown one and ignores a turn into the same tone', async t => {
+  const f = await fixture(t);
+  const shy = f.host.say('……才没有。', 'neutral', null, false, undefined, { tone: 'tsundere', toneEnd: 'shy' });
+  assert.deepEqual([shy.tone, shy.toneEnd], ['tsundere', 'shy']);
+  const same = f.host.say('嗯。', 'neutral', null, false, undefined, { tone: 'shy', toneEnd: 'shy' });
+  assert.deepEqual([same.tone, same.toneEnd], ['shy', undefined]);
+  const unknown = f.host.say('好。', 'neutral', null, false, undefined, { tone: 'shouting_loudly' });
+  assert.equal(unknown.tone, undefined);
 });
 
 test('conversations can be renamed and deleted, and single memories forgotten, across restart', async t => {
@@ -617,7 +953,7 @@ test('speech is opt-in, bounded, one line per turn and cooled down across turns'
   const say = args => f.registered.get('companion_say').execute(args, {}).then(JSON.parse);
   assert.equal(f.host.say('普通回复不会朗读。').spoken, false);
   assert.equal((await say({ text: '短句默认也不念。' })).spoken, false);
-  assert.equal((await say({ text: '长'.repeat(121), spoken: true })).spoken, false);
+  assert.equal((await say({ text: '长'.repeat(181), spoken: true })).spoken, false);
   assert.equal((await say({ text: '这张挑得不错嘛，夸你呢。', spoken: true })).spoken, true);
   assert.equal((await say({ text: '同一轮别连着说。', spoken: true })).spoken, false);
   f.host.spokenThisTurn = false;
@@ -635,7 +971,7 @@ test('a final-only reply gets one bounded spoken takeaway without another game t
   const sent = [];
   f.ctx.llm = { stream: options => f.stream(options, async function* () {
     sent.push(options);
-    yield { type: 'text-delta', text: JSON.stringify({ text: '先拆护盾，你帮我留点格挡就好。', emotion: 'taking_notes' }) };
+    yield { type: 'text-delta', text: JSON.stringify({ text: '先拆护盾，你帮我留点格挡就好。', emotion: 'taking_notes', animation: 'companion/shield_ready' }) };
   }) };
   const send = f.agent.followup;
   f.agent.followup = message => {
@@ -650,6 +986,7 @@ test('a final-only reply gets one bounded spoken takeaway without another game t
   assert.equal(sent[0].tools, undefined);
   assert.equal(f.host.messages.at(-1).spoken, true);
   assert.equal(f.host.messages.at(-1).emotion, 'taking_notes');
+  assert.equal(f.host.messages.at(-1).animation, 'companion/shield_ready');
   assert.equal(f.host.messages.at(-2).detail, true);
   assert.equal(f.host.budget.snapshot().requestCount, 0, 'paused chat and its speech edit are separate from the game trial');
   assert.equal(f.calls.filter(([name]) => name === 'followup').length, 1);
@@ -673,6 +1010,39 @@ test('text-only and cancellation suppress fallback speech', async t => {
   f.host.speechAbort.abort();
   await f.host.completeSpeech({ messages: [] });
   assert.equal(f.host.messages.at(-1).spoken, false);
+});
+
+test('speech editing can be turned off in the panel, reading final replies as is and surviving restart', async t => {
+  const f = await fixture(t);
+  let edits = 0;
+  f.ctx.llm = { stream: async function* () { edits++; yield { type: 'text-delta', text: '不该播出。' }; } };
+  const send = f.agent.followup;
+  let reply = '这步先防御，再看下一回合。';
+  f.agent.followup = message => {
+    send(message);
+    f.emit({ type: 'assistant/message', data: { message: { content: [{ type: 'text', text: reply }] } } });
+  };
+  assert.equal(f.host.status().speechEdit, true);
+  await f.host.control({ action: 'speech-edit', enabled: false });
+  await f.host.control({ action: 'chat', text: '这轮怎么打？' });
+  await f.host.scheduler.whenIdle();
+  assert.equal(edits, 0, 'no extra model call');
+  assert.equal(f.host.messages.at(-1).text, '这步先防御，再看下一回合。');
+  assert.equal(f.host.messages.at(-1).spoken, true, 'the original is read without rewriting');
+  f.host.lastSpokenAt -= 20000;
+  await f.host.control({ action: 'chat', text: '只用文字说' });
+  await f.host.scheduler.whenIdle();
+  assert.equal(f.host.messages.at(-1).spoken, false, 'text-only still wins');
+  f.host.replyLength = 'short';
+  reply = '长'.repeat(120);
+  await f.host.control({ action: 'chat', text: '详细说说' });
+  await f.host.scheduler.whenIdle();
+  assert.equal(f.host.messages.at(-1).text, reply);
+  assert.equal(f.host.messages.at(-1).spoken, false, 'over the length limit stays text');
+  const restarted = await fixture(t, { saved: JSON.parse(await readFile(f.stateFile, 'utf8')) });
+  assert.equal(restarted.host.status().speechEdit, false);
+  await restarted.host.control({ action: 'speech-edit', enabled: true });
+  assert.equal(restarted.host.status().speechEdit, true);
 });
 
 test('new chat arriving during speech editing discards the old line and completes the new reply', async t => {
@@ -1044,9 +1414,9 @@ test('game calls and independent auxiliary work count toward the trial; paused c
   await f.host.control({ action: 'resume' });
   await f.host.scheduler.whenIdle();
   const started = f.host.status().budget;
-  assert.equal(started.deadlineAt - started.startedAt, 1800000);
+  assert.equal(started.deadlineAt, null);
   assert.equal(started.requestCount, 1);
-  assert.equal(f.host.budget.maxRequests, 100);
+  assert.equal(started.continuous, true);
   await f.host.control({ action: 'pause' });
   await f.host.control({ action: 'chat', text: 'paused after the trial began' });
   await f.host.scheduler.whenIdle();
@@ -1083,13 +1453,13 @@ for (const reason of ['time-limit', 'request-limit']) {
     assert.equal(input.goal,null);
     assert.equal(f.host.scheduler.faulted,false);
     assert.equal(f.host.scheduler.actionsAllowed,false);
-    assert.equal(f.host.status().budget.limitReason,reason);
+    assert.equal(f.host.status().budget.limitReason,null);
     assert.equal(f.host.status().budget.requestCount,1);
     assert.equal(f.runtime.requests.includes('POST'),false);
   });
 }
 
-test('game trial expiry during a paused chat does not cancel that conversation', async t => {
+test('game accounting failure during a paused chat does not cancel that conversation', async t => {
   const f=await fixture(t);
   await f.host.control({action:'new-trial'});
   const sent=deferred(),finish=deferred();
@@ -1099,7 +1469,7 @@ test('game trial expiry during a paused chat does not cancel that conversation',
   f.agent.followup=message=>{send(message);sent.resolve();};
   await f.host.control({action:'chat',text:'聊一会儿'});
   await sent.promise;
-  f.host.budget.limit('time-limit');
+  f.host.budget.limit('budget-persistence-error');
   assert.equal(f.host.scheduler.active.canceled,false);
   assert.equal(f.host.scheduler.actionsAllowed,false);
   finish.resolve();await f.host.scheduler.whenIdle();
@@ -1115,7 +1485,7 @@ test('restored budget is enforced during agent resume before restored inbox work
       await consumeStream(stream({ sessionId: options.resumeSessionId, purpose: 'resume-auxiliary' }, modelReply));
     } });
   assert.equal(f.host.status().budget.requestCount, 2);
-  assert.equal(f.host.status().budget.deadlineAt, budget.deadlineAt);
+  assert.equal(f.host.status().budget.deadlineAt, null);
   assert.equal(f.host.status().budget.requests[0].status, 'unknown');
   assert.equal(f.host.scheduler.actionsAllowed, false);
   assert.equal(f.calls.filter(call => call[0] === 'followup').length, 0);
@@ -1123,60 +1493,60 @@ test('restored budget is enforced during agent resume before restored inbox work
   await f.host.control({ action: 'resume' });
   await f.host.scheduler.whenIdle();
   assert.equal(f.host.status().budget.requestCount, 2);
-  assert.equal(f.host.status().budget.deadlineAt, budget.deadlineAt);
+  assert.equal(f.host.status().budget.deadlineAt, null);
 });
 
-test('100th call closes the gate without waiting for idle; ordinary resume cannot reset it', async t => {
+test('playing continues beyond 100 calls; manual pause still requires explicit resume', async t => {
   const f = await fixture(t, { saved: { sessionId: 'capped-trial', sessionCreated: true, budget: trialState(99) } });
   await f.host.control({ action: 'bind', binding: identity });
   await f.host.control({ action: 'resume' });
   await f.host.scheduler.whenIdle();
   await assert.rejects(f.host.control({ action: 'new-trial' }), /paused, idle/);
-  f.agent.whenIdle = () => { assert.fail('limit callback must not await an auxiliary stream itself'); };
   const options = { sessionId: f.host.sessionId };
   await consumeStream(f.stream(options, modelReply));
+  assert.equal(f.host.scheduler.actionsAllowed, true);
+  assert.equal(f.host.status().budget.requestCount, 100);
+  assert.equal(f.host.status().budget.limitReason, null);
+  await consumeStream(f.stream(options, modelReply));
+  assert.equal(f.host.scheduler.actionsAllowed, true);
+  await f.host.control({ action: 'pause' });
   assert.equal(f.host.scheduler.actionsAllowed, false);
-  assert.equal(f.host.status().budget.requestCount, 100);
-  assert.equal(f.host.status().budget.limitReason, 'request-limit');
-  assert.ok(f.calls.some(call => call[0] === 'cancel'));
-  await assert.rejects(consumeStream(f.stream(options, () => assert.fail('101st call must not dispatch'))), /request-limit/);
-  await assert.rejects(f.host.control({ action: 'resume' }), /request-limit/);
+  await f.host.tick();
+  assert.equal(f.host.scheduler.actionsAllowed, false);
   await consumeStream(f.stream({ sessionId: 'another-session' }, modelReply));
-  assert.equal(f.host.status().budget.requestCount, 100);
+  assert.equal(f.host.status().budget.requestCount, 101);
   const reset = await f.host.control({ action: 'new-trial' });
   assert.equal(reset.budget.requestCount, 0);
   assert.equal(reset.budget.limitReason, null);
-  assert.equal(reset.budget.deadlineAt - reset.budget.startedAt, 1800000);
+  assert.equal(reset.budget.deadlineAt, null);
   assert.equal(f.host.scheduler.actionsAllowed, false);
   await f.host.dispose();
   assert.equal(f.host.budget.disposed, true);
   assert.ok(f.calls.some(call => call[0] === 'unlisten' && call[1] === 'llm/stream'));
 });
 
-test('expired restore blocks own-session model admission before agent resume, without resetting the trial', async t => {
+test('expired legacy budget migrates without auto-enabling game control or losing counts', async t => {
   const budget = { ...trialState(2), startedAt: Date.now() - 2000, deadlineAt: Date.now() - 1 };
   const f = await fixture(t, { saved: { ...savedChat('inbox'), budget }, events: submittedEvents('inbox'),
     onCreate: async ({ options, stream, host }) => {
       assert.equal(host.scheduler.actionsAllowed, false);
-      await assert.rejects(consumeStream(stream({ sessionId: options.resumeSessionId },
-        () => assert.fail('expired restored inbox must not call the provider'))), /time-limit/);
+      await consumeStream(stream({ sessionId: options.resumeSessionId }, modelReply));
     } });
-  assert.equal(f.host.status().budget.deadlineAt, budget.deadlineAt);
-  assert.equal(f.host.status().budget.requestCount, 2);
-  assert.equal(f.host.status().budget.limitReason, 'time-limit');
-  assert.equal(JSON.parse(await readFile(f.stateFile, 'utf8')).budget.limitReason, 'time-limit');
+  assert.equal(f.host.status().budget.deadlineAt, null);
+  assert.equal(f.host.status().budget.requestCount, 3);
+  assert.equal(f.host.status().budget.limitReason, null);
+  assert.equal(f.host.scheduler.actionsAllowed, false);
+  assert.equal(JSON.parse(await readFile(f.stateFile, 'utf8')).budget.continuous, true);
 });
 
-test('deadline closes an active game gate synchronously, and a new trial requires paused idle state', async t => {
+test('accounting failure closes the game gate; resetting records requires paused idle state', async t => {
   const f = await fixture(t);
   await f.host.control({ action: 'bind', binding: identity });
   await f.host.control({ action: 'resume' });
   await f.host.scheduler.whenIdle();
-  const expiredAt = f.host.budget.snapshot().deadlineAt;
-  f.host.budget.now = () => expiredAt;
-  f.host.budget.armTimer();
+  f.host.budget.limit('budget-persistence-error');
   assert.equal(f.host.scheduler.actionsAllowed, false);
-  assert.equal(f.host.status().budget.limitReason, 'time-limit');
+  assert.equal(f.host.status().budget.limitReason, 'budget-persistence-error');
   await f.host.control({ action: 'new-trial' });
   const turn = deferred(), sent = deferred();
   const send = f.agent.followup, cancel = f.agent.cancel;
@@ -1230,8 +1600,11 @@ test('invalid saved budget fails initialization without overwriting the original
   assert.deepEqual(JSON.parse(await readFile(f.stateFile, 'utf8')), saved);
 });
 
-test('budget exhaustion inside an active host turn cancels without a whenIdle deadlock', async t => {
+test('accounting persistence failure inside a host turn cancels without a whenIdle deadlock', async t => {
   const f = await fixture(t, { saved: { sessionId: 'last-call', sessionCreated: true, budget: trialState(99) } });
+  const writeState = f.host.writeState;
+  f.host.writeState = state => state.budget?.requestCount === 100 && state.budget.requests.at(-1)?.status === 'pending'
+    ? Promise.reject(new Error('disk unavailable')) : writeState(state);
   let modelTurn = Promise.resolve();
   const send = f.agent.followup;
   f.agent.followup = message => {
@@ -1242,40 +1615,10 @@ test('budget exhaustion inside an active host turn cancels without a whenIdle de
   await f.host.control({ action: 'bind', binding: identity });
   await f.host.control({ action: 'resume' });
   await f.host.scheduler.whenIdle();
+  f.host.writeState = writeState;
   assert.equal(f.host.status().budget.requestCount, 100);
-  assert.equal(f.host.status().budget.limitReason, 'request-limit');
+  assert.equal(f.host.status().budget.limitReason, 'budget-persistence-error');
   assert.equal(f.host.scheduler.actionsAllowed, false);
   assert.equal(f.host.scheduler.snapshot().active, false);
   assert.equal(f.calls.filter(call => call[0] === 'followup').length, 1);
-});
-
-test('what she calls the user is set from the panel, cleaned, read at every request and kept across restart', async t => {
-  const f = await fixture(t);
-  assert.equal(f.host.status().userTitle, '你');
-  await f.host.control({ action: 'chat', text: '在吗' });
-  await f.host.scheduler.whenIdle();
-  const section = f.sections.find(item => item.name === 'companion:user-title');
-  assert.match(section.text, /\{\{companion_user_title\}\}/);
-  assert.notEqual(section.interpolate, false);
-  assert.equal(f.variables.get('companion_user_title')(), '你');
-  await f.host.control({ action: 'user-title', title: ' 主人{{x}}\n【' });
-  assert.equal(f.host.status().userTitle, '主人x');
-  assert.equal(f.variables.get('companion_user_title')(), '主人x', 'the open session picks up the new title');
-  await f.host.control({ action: 'user-title', title: '   ' });
-  assert.equal(f.host.status().userTitle, '你');
-  await f.host.control({ action: 'user-title', title: '阿明' });
-  const restarted = await fixture(t, { saved: JSON.parse(await readFile(f.stateFile, 'utf8')) });
-  assert.equal(restarted.host.status().userTitle, '阿明');
-  const prompt = JSON.parse(restarted.host.prompt({ kind: 'chat', messages: [{ content: '几点了' }] }).content[0].text);
-  assert.match(prompt.time, /\d{1,2}:\d{2}/, 'each turn carries the local time');
-});
-
-test('a reply keeps a valid voice tone, drops an unknown one and ignores a turn into the same tone', async t => {
-  const f = await fixture(t);
-  const shy = f.host.say('……才没有。', 'neutral', null, false, undefined, { tone: 'tsundere', toneEnd: 'shy' });
-  assert.deepEqual([shy.tone, shy.toneEnd], ['tsundere', 'shy']);
-  const same = f.host.say('嗯。', 'neutral', null, false, undefined, { tone: 'shy', toneEnd: 'shy' });
-  assert.deepEqual([same.tone, same.toneEnd], ['shy', undefined]);
-  const unknown = f.host.say('好。', 'neutral', null, false, undefined, { tone: 'shouting_loudly' });
-  assert.equal(unknown.tone, undefined);
 });

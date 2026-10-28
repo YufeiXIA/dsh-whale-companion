@@ -4,7 +4,7 @@
 //   WHALE_PET_SOURCE  unpacked @luweiyabo/dsh-whale-pet package; downloaded with npm pack when unset
 import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
@@ -18,30 +18,38 @@ const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 if (!existsSync(join(electronDist, 'electron.exe'))) throw new Error(`electron.exe not found in ${electronDist}; set ELECTRON_DIST`);
 
+async function cleanOutput(directory) {
+  const child = relative(resolve(repo, 'outputs'), resolve(directory));
+  if (!child || child.startsWith('..') || isAbsolute(child)) throw new Error('Build output must stay inside outputs/');
+  await rm(directory, { recursive: true, force: true });
+}
+
 async function petSource() {
   if (process.env.WHALE_PET_SOURCE) return process.env.WHALE_PET_SOURCE;
   const downloads = join(repo, 'outputs/lite-pet');
-  await rm(downloads, { recursive: true, force: true });
+  await cleanOutput(downloads);
   await mkdir(downloads, { recursive: true });
   const file = execFileSync(npm, ['pack', '@luweiyabo/dsh-whale-pet@0.1.3', '--silent'], { cwd: downloads, encoding: 'utf8', shell: true }).trim();
   execFileSync('tar', ['-xzf', file], { cwd: downloads });
   return join(downloads, 'package');
 }
 
-await rm(stage, { recursive: true, force: true });
+await cleanOutput(stage);
 const copy = (from, to = from, options = {}) => cp(join(repo, from), join(stage, to), { recursive: true, ...options });
 
 await copy('lite/main.cjs');
+await copy('lite/release-check.cjs');
 await copy('lite/persona.md');
 await copy('lite/host');
 await copy('tools/companion-activity.ps1');
+await copy('tools/companion-window-tracker.ps1');
+await copy('tools/companion-window-tracker.cs');
 await copy('LICENSE');
 await copy('THIRD_PARTY_ASSETS.md');
 await copy('app/dsh-game-companion/package.json');
 await copy('app/dsh-game-companion/src');
-await copy('app/dsh-game-companion/public/index.html');
-await copy('app/dsh-game-companion/public/art');
-await copy('app/dsh-game-companion/public/animations');
+await copy('app/dsh-game-companion/persona');
+await copy('app/dsh-game-companion/public');
 // Test and check scripts stay out; main.cjs only loads them behind test flags.
 await copy('app/companion-overlay', 'app/companion-overlay', {
   filter: source => !/(\.test\.cjs|-check\.cjs|smoke\.cjs|README\.md)$/.test(source)
@@ -71,6 +79,6 @@ await writeFile(join(stage, 'package.json'), JSON.stringify({
   }
 }, null, 2));
 
-await rm(dist, { recursive: true, force: true });
-execFileSync(join(lite, 'node_modules/.bin', process.platform === 'win32' ? 'electron-builder.cmd' : 'electron-builder'),
-  ['--win', '--x64', '--projectDir', stage], { stdio: 'inherit', shell: true });
+await cleanOutput(dist);
+execFileSync(process.execPath, [join(lite, 'node_modules/electron-builder/out/cli/cli.js'),
+  '--win', '--x64', '--projectDir', stage], { stdio: 'inherit' });

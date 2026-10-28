@@ -7,7 +7,8 @@ import { serveAnimation } from '../../app/dsh-game-companion/src/animation-asset
 import { VoiceError } from './voice.mjs';
 
 const publicDir = fileURLToPath(new URL('../../app/dsh-game-companion/public/', import.meta.url));
-const artTypes = { png: 'image/png', woff2: 'font/woff2' };
+const artTypes = { png: 'image/png', svg: 'image/svg+xml', woff2: 'font/woff2' };
+const otherTypes = { script: 'text/javascript; charset=utf-8', wav: 'audio/wav' };
 
 function json(res, status, value) {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
@@ -50,7 +51,7 @@ export async function startServer(host, { petDir }) {
       push();
     },
     'POST /game-companion/control': async (req, res) => {
-      try { json(res, 200, await host.control(await readInput(req))); }
+      try { json(res, 200, await host.control(await readInput(req, 1400000))); }
       catch (error) { json(res, 400, { error: error.message }); }
     },
     'POST /game-companion/vision': async (req, res) => {
@@ -71,8 +72,10 @@ export async function startServer(host, { petDir }) {
     }
   };
   const files = [
+    [/^\/game-companion\/(touch-interactions|pcm-player)\.js$/, ([, name]) => join(publicDir, `${name}.cjs`), 'script'],
+    [/^\/game-companion\/touch-voices\/(?:momo\/|fish\/)?([a-z]+)-(\d+)\.wav$/, match => join(publicDir, 'touch-voices', ...match[0].split('/').slice(3)), 'wav'],
     [/^\/game-companion\/animations\/([a-z0-9_]+)\.webm$/, ([, name]) => join(publicDir, 'animations', `${name}.webm`), 'webm'],
-    [/^\/game-companion\/art\/((?:expressions\/|fonts\/)?[a-z0-9_]+)\.(png|woff2)$/, ([, name, ext]) => join(publicDir, 'art', `${name}.${ext}`), 'art'],
+    [/^\/game-companion\/art\/((?:expressions\/|fonts\/)?[a-z0-9_-]+)\.(png|svg|woff2)$/, ([, name, ext]) => join(publicDir, 'art', `${name}.${ext}`), 'art'],
     [/^\/whale-pet\/([a-z]+)\/([a-z0-9_]+)\.webm$/, ([, category, name]) => join(petDir, category, `${name}.webm`), 'webm']
   ];
   const server = createServer(async (req, res) => {
@@ -88,7 +91,8 @@ export async function startServer(host, { petDir }) {
       try {
         const bytes = await readFile(resolve(match));
         if (kind === 'webm') return serveAnimation(req, res, bytes);
-        res.writeHead(200, { 'content-type': artTypes[match[2]], 'cache-control': 'private, max-age=86400' });
+        const mime = otherTypes[kind] ?? artTypes[match[2]];
+        res.writeHead(200, { 'content-type': mime, 'cache-control': 'private, max-age=86400' });
         return res.end(bytes);
       } catch { return json(res, 404, { error: 'Not found' }); }
     }

@@ -3,6 +3,19 @@ import assert from 'node:assert/strict';
 import { CompanionVoice } from '../src/voice.js';
 
 const message = { id: 'reply-one', role: 'assistant', text: '我来收尾，你留点格挡。', emotion: 'tsundere_pout', spoken: true };
+test('voice selection isolates caches, preserves the default and rejects unsupported emotional Momo previews',async()=>{
+  const calls=[];
+  const runtime=voice=>({voice,model:'test',provider:{synthesize:async()=>{calls.push(voice);return {audio:{mimeType:'audio/wav'}};}},
+    store:{read:async()=>new Uint8Array([1]),releaseScope:async()=>{}}});
+  const voice=new CompanionVoice({directory:'unused',load:async()=>runtime('longhua_v3.1'),loadMomo:async()=>runtime('Momo')});
+  const signal=new AbortController().signal;
+  assert.equal((await voice.speak(message,'session',signal)).voice,'longhua_v3.1');
+  assert.equal((await voice.speak(message,'session',signal,null,'momo')).voice,'Momo');
+  assert.equal((await voice.speak(message,'session',signal)).voice,'longhua_v3.1');
+  assert.deepEqual(calls,['longhua_v3.1','Momo']);
+  await assert.rejects(voice.speak(message,'session',signal,null,'other'),/VOICE_SELECTION_REQUIRED/);
+  await assert.rejects(voice.previewEmotion('happy','session',signal,'momo'),/VOICE_EMOTION_UNAVAILABLE/);
+});
 function fixture(synthesize) {
   const calls = [], released = [];
   const runtime = { voice: 'Momo', provider: { synthesize: async (input, signal) => {
@@ -41,16 +54,16 @@ test('cancellation and concurrent playback cannot create duplicate synthesis or 
 test('historical diagnostics, absent messages and user inputs never reach the provider', async () => {
   const f = fixture();
   for (const value of [undefined, { ...message, role: 'user' }, { ...message, spoken: false },
-    { ...message, spoken: undefined }, { ...message, text: '说明'.repeat(61) }]) {
+    { ...message, spoken: undefined }, { ...message, text: '说明'.repeat(151) }]) {
     await assert.rejects(f.voice.speak(value, 'game-session', new AbortController().signal), /VOICE_/);
   }
   assert.equal(f.calls.length, 0);
 });
 
-test('longer selected speech reaches Momo intact up to 120 characters', async () => {
+test('longer selected speech reaches Momo intact up to 180 characters', async () => {
   const f=fixture();
-  await f.voice.speak({...message,text:'鲸'.repeat(120)},'game-session',new AbortController().signal);
-  assert.equal(f.calls[0].text.length,120);
+  await f.voice.speak({...message,text:'鲸'.repeat(180)},'game-session',new AbortController().signal);
+  assert.equal(f.calls[0].text.length,180);
 });
 
 test('proactive paragraphs are voiced intact up to 240 characters without changing the selected voice',async()=>{

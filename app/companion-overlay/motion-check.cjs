@@ -5,11 +5,11 @@ module.exports=async function({win,output,getRoute,getFacing,startInertia,stopIn
   const js=code=>win.webContents.executeJavaScript(code);
   const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   async function wait(check,label){for(let i=0;i<100;i++){if(await check())return;await sleep(100);}throw Error('Motion check: '+label);}
-  await js("setPanel(false);petAnimator.desktop(false,[],false);petAnimator.perform('magic/card_magic');void 0;");
+  await js("setPanel(false);petAnimator.desktop(false,[],false);window.dispatchEvent(new CustomEvent('companion-desktop-prefs',{detail:'0,1'}));petAnimator.perform('magic/card_magic');void 0;");
   await wait(()=>js("document.getElementById('pet').src.includes('card_magic')&&document.getElementById('pet').currentTime>.4"),'first clip');
   const layers=await js("document.querySelectorAll('video.pet-layer').length");assert.equal(layers,2);
-  const replay=await js("document.getElementById('pet').currentTime=6;petAnimator.perform('magic/card_magic');document.getElementById('pet').currentTime");
-  assert.ok(replay>=5.9,'old frame remains while new clip loads');
+  const replay=await js("document.getElementById('pet').currentTime=6;petAnimator.perform('magic/card_magic');({time:document.getElementById('pet').currentTime,ready:document.getElementById('pet').readyState})");
+  assert.ok(replay.time>=5.9||replay.time<1&&replay.ready>=2,'keep the old frame or an already decoded replacement');
   await wait(()=>js("document.getElementById('pet').src.includes('card_magic')&&document.getElementById('pet').currentTime<1"),'replay from start');
   // Put enough room on either side so this tests movement, not edge rejection.
   win.setPosition(600,350);
@@ -20,11 +20,16 @@ module.exports=async function({win,output,getRoute,getFacing,startInertia,stopIn
     if(!getRoute())await js("document.getElementById('pet').onended?.();void 0;");
   }
   await wait(()=>Boolean(getRoute()),'route created');
+  await wait(()=>js("document.getElementById('pet').src.includes('/moves/')&&document.getElementById('pet').currentTime>0"),'movement clip decoded');
+  assert.equal(getRoute().smooth,true);
+  const route={...getRoute()};
+  await js("document.getElementById('pet').currentTime=.3;void 0;");await sleep(100);
   const before=win.getBounds();
+  await sleep(200);assert.deepEqual(win.getBounds(),before,'preparation keeps the window still');
   await js("document.getElementById('pet').currentTime=3;document.getElementById('pet-hit').dispatchEvent(new MouseEvent('mousemove',{bubbles:true}));void 0;");
   await sleep(350);
   assert.ok(getRoute(),'hover must not cancel a running route');
-  const after=win.getBounds();assert.notEqual(after.x,before.x);
+  const after=win.getBounds();assert.ok(after.x!==before.x||after.y!==before.y);
   const direction=getFacing();
   await js("petAnimator.perform('daily/big_stretch');void 0;");
   await wait(()=>getRoute()===null,'manual action stops movement');
@@ -39,7 +44,7 @@ module.exports=async function({win,output,getRoute,getFacing,startInertia,stopIn
   await wait(()=>js("document.getElementById('pet').src.includes('breathing')"),'settle');
   const options=await js("[...document.getElementById('desktop-mode').options].map(o=>o.value)");
   assert.deepEqual(options,['natural','showcase']);
-  await writeFile(path.join(output,'natural-motion-check.json'),JSON.stringify({completed:true,layers,
+  await writeFile(path.join(output,'natural-motion-check.json'),JSON.stringify({completed:true,checkedAt:new Date().toISOString(),layers,route,before,after,preparationStationary:true,
     sameActionRestart:true,hoverContinuesMovement:true,facingPreserved:true,turnFacing:true,inertia:true,options,
     note:'Real Electron decoding, IPC and native movement with synthetic events; no physical-mouse or mixed-DPI acceptance.'},null,2));
 };

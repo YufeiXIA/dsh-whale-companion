@@ -8,7 +8,7 @@ import { CompanionVoice } from '../src/voice.js';
 test('new expressions survive the chat tool and speech editing, preserving Momo', async()=>{
   const registered=new Map(),sent=[],synthesized=[];
   const host={singleCasualReply:()=>true,say(text,emotion){sent.push({text,emotion});return {spoken:false};}};
-  installTools({tools:{restrict(){},presentAs(){},guard(){},register(tool){registered.set(tool.name,tool);}}},host);
+  installTools({on(){},tools:{restrict(){},presentAs(){},guard(){},register(tool){registered.set(tool.name,tool);}}},host);
   const tool=registered.get('companion_say');
   const runtime={voice:'Momo',provider:{synthesize:async input=>{
     synthesized.push(input);return {audio:{mimeType:'audio/wav'},durationMs:1000};

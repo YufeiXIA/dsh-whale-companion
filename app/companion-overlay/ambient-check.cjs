@@ -6,7 +6,7 @@ module.exports = async function ({ win, output, request, setClickThrough, native
   const before = await request('/game-companion/state');
   assert.equal(before.scheduler.paused, true);
   const initial = await win.webContents.executeJavaScript(`(()=>{
-    document.getElementById('pet-hit').click();
+    document.getElementById('quick-panel').click();
     const option=document.getElementById('ambient-enabled');
     return {checked:option.checked,voice:localStorage.getItem('companion-voice'),
       text:document.getElementById('ambient-options').textContent,nodeExposed:typeof window.require!=='undefined'};
@@ -26,12 +26,12 @@ module.exports = async function ({ win, output, request, setClickThrough, native
   }
   try {
     await toggle(false); await toggle(true);
-    await win.webContents.executeJavaScript(`document.getElementById('ambient-frequency').value='2,5';document.getElementById('ambient-frequency').dispatchEvent(new Event('change'));void 0;`);
+    await win.webContents.executeJavaScript(`document.getElementById('ambient-frequency').value='custom';document.getElementById('ambient-frequency').dispatchEvent(new Event('change'));document.getElementById('ambient-min').value='2';document.getElementById('ambient-apply').click();void 0;`);
     for(let i=0;i<40;i++){
-      if((await request('/game-companion/state')).ambient.minMinutes===2)break;
+      if((await request('/game-companion/state')).ambient.intervalMinutes===2)break;
       await new Promise(resolve=>setTimeout(resolve,100));
     }
-    assert.equal((await request('/game-companion/state')).ambient.maxMinutes,5);
+    assert.equal((await request('/game-companion/state')).ambient.intervalMinutes,2);
     const ui = await win.webContents.executeJavaScript(`(()=>{
       document.getElementById('companion-settings').open=true;
       const r=document.getElementById('ambient-options').getBoundingClientRect();
@@ -91,6 +91,6 @@ module.exports = async function ({ win, output, request, setClickThrough, native
   } finally {
     setClickThrough(originalClickThrough);
     await request('/game-companion/control', {action:'ambient-settings',enabled:before.ambient.enabled,
-      minMinutes:before.ambient.minMinutes,maxMinutes:before.ambient.maxMinutes,visionEnabled:before.ambient.visionEnabled});
+      intervalMinutes:before.ambient.intervalMinutes,visionEnabled:before.ambient.visionEnabled});
   }
 };

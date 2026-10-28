@@ -19,4 +19,12 @@ test('a click never starts native dragging; a real drag preserves its pointer-do
   listeners.get('pointerdown')(down);listeners.get('pointermove')({screenX:40,screenY:510});listeners.get('pointerup')();
   assert.deepEqual(calls.map(call=>call[1]),['drag-prepare','drag-start','drag-move','drag-end']);
   assert.equal(calls[1][2],undefined,'renderer screen coordinates must not be mixed with native DIP coordinates');
+  const clickLine=source.split('\n').find(line=>line.includes("pet.addEventListener('click'"));
+  vm.runInNewContext(clickLine,context);
+  let suppressed=0;
+  listeners.get('click')({stopImmediatePropagation(){suppressed++;},preventDefault(){suppressed++;}});
+  assert.equal(suppressed,2,'releasing a drag must suppress the following body interaction');
+  listeners.get('pointerdown')(down);listeners.get('pointerup')();
+  listeners.get('click')({stopImmediatePropagation(){suppressed++;},preventDefault(){suppressed++;}});
+  assert.equal(suppressed,2,'a fresh single click must reach the body interaction');
 });

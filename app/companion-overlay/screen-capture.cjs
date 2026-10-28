@@ -13,7 +13,7 @@ function createScreenCapture({ getSources, inspect, upload, onCapture = () => {}
           return await upload({ ticket, unavailable: true });
         }
         const primary = getPrimaryDisplay?.();
-        const sources = await getSources({ types: [primary ? 'screen' : 'window'], thumbnailSize: { width: 1280, height: 1280 }, fetchWindowIcons: false });
+        const sources = await getSources({ types: [primary ? 'screen' : 'window'], thumbnailSize: { width: 1920, height: 1920 }, fetchWindowIcons: false });
         const source = sources.find(source => primary ? source.display_id === String(primary.id) : source.id.split(':')[1] === before.windowId);
         const after = await inspect();
         if (!isAllowed() || !source || source.thumbnail.isEmpty() || !after.available || after.sensitive || after.captureOverlay || before.windowId !== after.windowId || before.app !== after.app || closed) {
@@ -30,7 +30,8 @@ function createScreenCapture({ getSources, inspect, upload, onCapture = () => {}
           if (rightPx <= leftPx || bottomPx <= topPx) return await upload({ ticket, unavailable: true });
           image = image.crop({ x: leftPx, y: topPx, width: rightPx - leftPx, height: bottomPx - topPx });
         }
-        const bytes = image.toJPEG(72);
+        let bytes = image.toJPEG(82);
+        if (bytes.length > 1000000) bytes = image.toJPEG(64);
         if (!isAllowed() || bytes.length > 1000000) return await upload({ ticket, unavailable: true });
         onCapture();
         await upload({ ticket, jpeg: bytes.toString('base64'), ...(primary ? { source: 'primary-visible-window', sourceApp: before.app } : {}) });

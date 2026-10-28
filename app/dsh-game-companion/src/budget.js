@@ -7,11 +7,13 @@ function validateRestored(state) {
   const validTime = value => Number.isFinite(value) && value >= 0;
   const statuses = ['pending', 'unknown', 'completed', 'failed', 'canceled', 'interrupted'];
   if (!state || !Number.isSafeInteger(state.requestCount) || state.requestCount < 0 ||
-      !Array.isArray(state.requests) || state.requests.length !== state.requestCount ||
+      !Array.isArray(state.requests) || (state.continuous === true
+        ? state.requests.length > state.requestCount : state.requests.length !== state.requestCount) ||
       !state.requests.every(request => request && !Array.isArray(request) && statuses.includes(request.status))) {
     throw new Error('Invalid restored trial budget: request count or records');
   }
   if (state.startedAt === null && state.deadlineAt === null && state.requestCount === 0) return;
+  if (state.continuous === true && validTime(state.startedAt) && state.deadlineAt === null) return;
   if (!validTime(state.startedAt) || !validTime(state.deadlineAt) || state.deadlineAt <= state.startedAt) {
     throw new Error('Invalid restored trial budget: start or deadline');
   }
@@ -20,18 +22,24 @@ function validateRestored(state) {
 // Counts DSH llm.stream calls, including retries and auxiliary calls in the same
 // session. It does not count adapter-internal HTTP retries.
 export class TrialBudget {
-  constructor({ restored, persist, onLimit, durationMs = 30 * 60 * 1000, maxRequests = 100,
+  constructor({ restored, persist, onLimit, continuous = false, durationMs = 30 * 60 * 1000, maxRequests = 100,
     now = Date.now, monotonicNow = () => performance.now(), setTimer = setTimeout, clearTimer = clearTimeout }) {
     this.persist = persist;
     this.onLimit = onLimit;
     this.durationMs = durationMs;
     this.maxRequests = maxRequests;
+    this.continuous = continuous;
     this.now = now;
     this.monotonicNow = monotonicNow;
     this.setTimer = setTimer;
     this.clearTimer = clearTimer;
     if (restored !== undefined) validateRestored(restored);
     this.state = structuredClone(restored ?? { startedAt: null, deadlineAt: null, requestCount: 0, limitReason: null, requests: [] });
+    if (continuous) {
+      this.state.continuous = true;
+      this.state.deadlineAt = null;
+      if (['time-limit', 'request-limit'].includes(this.state.limitReason)) this.state.limitReason = null;
+    }
     this.pending = Promise.resolve();
     this.running = 0;
     this.failure = null;
@@ -41,12 +49,20 @@ export class TrialBudget {
     for (const request of this.state.requests) {
       if (request.status === 'pending') request.status = 'unknown';
     }
+    this.trimHistory();
     if (this.state.limitReason) this.limit(this.state.limitReason);
-    else if (this.state.requestCount >= this.maxRequests) this.limit('request-limit');
+    else if (!this.continuous && this.state.requestCount >= this.maxRequests) this.limit('request-limit');
     this.armTimer();
   }
 
   snapshot() { return structuredClone(this.state); }
+
+  trimHistory() {
+    if (!this.continuous) return;
+    // Keep lifetime counts, recent diagnostics, and every in-flight request.
+    const recent = new Set(this.state.requests.filter(request => request.status !== 'pending').slice(-100));
+    this.state.requests = this.state.requests.filter(request => request.status === 'pending' || recent.has(request));
+  }
 
   enqueue(operation) {
     const result = this.pending.then(operation);
@@ -94,7 +110,8 @@ export class TrialBudget {
       this.failure = null;
       this.notified.clear();
       const startedAt = this.now();
-      this.state = { startedAt, deadlineAt: startedAt + this.durationMs, requestCount: 0, limitReason: null, requests: [] };
+      this.state = { startedAt, deadlineAt: this.continuous ? null : startedAt + this.durationMs,
+        requestCount: 0, limitReason: null, requests: [], ...(this.continuous ? { continuous: true } : {}) };
       this.armTimer();
       await this.save();
       return this.snapshot();
@@ -106,7 +123,7 @@ export class TrialBudget {
     if (this.failure) throw this.failure;
     options.signal?.throwIfAborted();
     if (this.state.startedAt === null) throw new Error('Trial has not begun');
-    if (this.now() >= this.state.deadlineAt) this.limit('time-limit');
+    if (!this.continuous && this.now() >= this.state.deadlineAt) this.limit('time-limit');
     if (this.state.limitReason) throw new Error(`Trial paused: ${this.state.limitReason}`);
   }
 
@@ -122,7 +139,7 @@ export class TrialBudget {
     try {
       await this.enqueue(async () => {
         this.check(options);
-        if (this.state.requestCount >= this.maxRequests) {
+        if (!this.continuous && this.state.requestCount >= this.maxRequests) {
           this.limit('request-limit');
           throw new Error('Trial paused: request-limit');
         }
@@ -155,8 +172,8 @@ export class TrialBudget {
             else if (request.finishReason === 'error') request.status = 'failed';
             else request.status = completed ? 'completed' : 'interrupted';
           }
-          if (request.number === this.maxRequests) this.limit('request-limit');
-          if (!this.failure) await this.enqueue(() => this.save());
+          if (!this.continuous && request.number === this.maxRequests) this.limit('request-limit');
+          if (!this.failure) await this.enqueue(() => { this.trimHistory(); return this.save(); });
         }
       } finally { this.running--; }
     }

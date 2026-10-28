@@ -17,6 +17,56 @@ function fixture(t, config = {}) {
   return { budget, saved, limits, advance: ms => { time += ms; monotonic += ms; }, fireTimer: () => timer.callback(), timer: () => timer };
 }
 
+test('continuous play passes old quotas and bounds history without losing cumulative counts', async t => {
+  const { budget, advance, limits, timer } = fixture(t, { continuous: true });
+  await budget.begin({ paused: true });
+  advance(24 * 60 * 60 * 1000);
+  for (let i = 0; i < 125; i++) await consume(budget.wrap(options, stream(finish)));
+  const saved = budget.snapshot();
+  assert.equal(saved.requestCount, 125);
+  assert.equal(saved.requests.length, 100);
+  assert.equal(saved.requests[0].number, 26);
+  assert.equal(saved.deadlineAt, null);
+  assert.deepEqual(limits, []);
+  assert.equal(timer(), undefined);
+  const { budget: restarted } = fixture(t, { continuous: true, restored: saved });
+  await consume(restarted.wrap(options, stream(finish)));
+  assert.equal(restarted.snapshot().requestCount, 126);
+  assert.equal(restarted.snapshot().requests.length, 100);
+});
+
+test('continuous migration clears only obsolete quotas, preserving other failures', async t => {
+  for (const reason of ['time-limit', 'request-limit', 'budget-persistence-error']) {
+    const restored = { startedAt: 0, deadlineAt: 1, requestCount: 1, limitReason: reason,
+      requests: [{ status: 'pending', number: 1 }] };
+    const { budget, limits } = fixture(t, { continuous: true, restored });
+    assert.equal(budget.snapshot().requests[0].status, 'unknown');
+    if (reason === 'budget-persistence-error') {
+      await assert.rejects(consume(budget.wrap(options, stream(finish))), /budget-persistence-error/);
+      assert.deepEqual(limits, [reason]);
+    } else {
+      await consume(budget.wrap(options, stream(finish)));
+      assert.equal(budget.snapshot().requestCount, 2);
+      assert.deepEqual(limits, []);
+    }
+  }
+});
+
+test('continuous history pruning never drops a still-running request', async t => {
+  const { budget } = fixture(t, { continuous: true });
+  await budget.begin({ paused: true });
+  const entered = deferred(), gate = deferred();
+  t.after(() => gate.resolve());
+  const active = consume(budget.wrap(options, async function* () { entered.resolve(); await gate.promise; yield finish; }));
+  await entered.promise;
+  for (let i = 0; i < 105; i++) await consume(budget.wrap(options, stream(finish)));
+  assert.equal(budget.snapshot().requests[0].status, 'pending');
+  assert.equal(budget.snapshot().requests.length, 101);
+  gate.resolve(); await active;
+  assert.equal(budget.snapshot().requestCount, 106);
+  assert.equal(budget.snapshot().requests.length, 100);
+});
+
 test('begin is explicit, requires paused host, and uses 30 minute / 100 request defaults', async t => {
   const { budget, saved, timer } = fixture(t);
   let dispatched = false;

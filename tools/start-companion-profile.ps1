@@ -11,7 +11,7 @@ if ($key) { $env:DEEPSEEK_API_KEY = $key }
 $env:TEMP = Join-Path $root 'downloads\companion'; $env:TMP = $env:TEMP
 New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null
 # DeepSeek Harness Desktop ships its host CLI inside the app bundle.
-$cli = Join-Path (Split-Path $Config.DshExe) 'resources\app.asar\dsh\node_modules\@deepseek-ai\dsh-desktop-host\lib\cli.js'
-$process = Start-Process -FilePath $Config.DshExe -ArgumentList @('--expose-internals', $cli, '--profile', $Config.Profile, '--no-open', '--port', [string]$Config.Port) -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logDir 'host.stdout.log') -RedirectStandardError (Join-Path $logDir 'host.stderr.log') -PassThru
+$entry = '"' + (Join-Path $PSScriptRoot 'run-dsh-host.mjs') + '"'
+$process = Start-Process -FilePath $Config.DshExe -ArgumentList @('--expose-internals', $entry, '--profile', $Config.Profile, '--no-open', '--port', [string]$Config.Port) -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logDir 'host.stdout.log') -RedirectStandardError (Join-Path $logDir 'host.stderr.log') -PassThru
 $process.Id | Set-Content -LiteralPath (Join-Path $logDir 'host.pid')
 Write-Output "Companion host PID=$($process.Id) port=$($Config.Port)"

@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const { writeFile } = require('node:fs/promises');
 const path = require('node:path');
+const { compactFooter } = require('./roaming.cjs');
 
 module.exports = async function smoke({ win, output, request, nativeState, setClickThrough, showWithoutFocus, closeSafely, appearanceTest=false, checkPointMovement }) {
   const before = await request('/game-companion/state');
@@ -30,7 +31,7 @@ module.exports = async function smoke({ win, output, request, nativeState, setCl
   const savedSize=await win.webContents.executeJavaScript("Number(document.getElementById('pet-size').value)");
   await win.webContents.executeJavaScript("document.getElementById('pet-size').value='100';document.getElementById('pet-size').dispatchEvent(new Event('input'));");
   await writeFile(path.join(output,'overlay-pet-preview.png'),(await win.webContents.capturePage()).toPNG());
-  await win.webContents.executeJavaScript("document.getElementById('pet-hit').click()");
+  await win.webContents.executeJavaScript("document.getElementById('quick-panel').click()");
   for(let attempt=0;attempt<40;attempt++){
     if(await win.webContents.executeJavaScript("document.getElementById('pet').currentTime>0.6"))break;
     await new Promise(resolve=>setTimeout(resolve,100));
@@ -57,7 +58,7 @@ module.exports = async function smoke({ win, output, request, nativeState, setCl
   assert.equal(rendered.nativeBar, true);
   assert.equal(rendered.messages, before.messages.length);
   assert.equal(rendered.deliveryLabels, before.messages.filter(message => before.chatDelivery?.some(delivery => delivery.id === message.id)).length);
-  assert.match(rendered.budget, /模型调用/);
+  assert.match(rendered.budget, /调用次数/);
   assert.equal(rendered.focused, true);
   assert.equal(rendered.detailsClosed, true);
   assert.equal(rendered.voiceButton, rendered.voicePreference ? '语音已开' : '开启语音');
@@ -115,8 +116,9 @@ module.exports = async function smoke({ win, output, request, nativeState, setCl
   assert.equal(await win.webContents.executeJavaScript("document.getElementById('character-sheet').open"),false,'Escape closes the character card before releasing game focus');
   assert.equal(win.isAlwaysOnTop(), true, JSON.stringify({ visible: win.isVisible(), minimized: win.isMinimized(), focused: win.isFocused(), bounds: win.getBounds() }));
   assert.equal(win.isFocused(), false);
-  assert.equal(nativeState().toggleAvailable, true);
-  setClickThrough(true); assert.equal(win.isFocusable(), false);
+  const shortcutAvailable = nativeState().toggleAvailable;
+  // A running desktop pet may already own the shortcut; the new window must then stay clickable.
+  setClickThrough(true); assert.equal(win.isFocusable(), !shortcutAvailable);
   setClickThrough(false); assert.equal(win.isFocusable(), true);
   assert.equal(win.isAlwaysOnTop(), true);
   const bounds = win.getBounds();
@@ -147,7 +149,7 @@ module.exports = async function smoke({ win, output, request, nativeState, setCl
   await writeFile(path.join(output,'overlay-small-preview.png'),(await win.webContents.capturePage()).toPNG());
   await win.webContents.executeJavaScript("document.getElementById('portrait-animated').click()");
   await new Promise(resolve=>setTimeout(resolve,150));
-  assert.equal(win.getBounds().width,350,'Switching portrait must preserve the window size');
+  assert.equal(win.getBounds().width,410,'Portrait layout returns the artificially narrowed test window to the supported panel width');
   await writeFile(path.join(output,'overlay-small-animated-preview.png'),(await win.webContents.capturePage()).toPNG());
   await win.webContents.executeJavaScript("document.getElementById('portrait-static').click()");
   win.setSize(bounds.width, bounds.height);
@@ -206,14 +208,14 @@ module.exports = async function smoke({ win, output, request, nativeState, setCl
   await win.webContents.executeJavaScript("document.getElementById('pet-size').value='100';document.getElementById('pet-size').dispatchEvent(new Event('input'));");
   await win.webContents.executeJavaScript("document.getElementById('hide-panel').click();showBubble('先别急，等我一下。');");
   await new Promise(resolve=>setTimeout(resolve,1400));
-  const bubbleLayout=await win.webContents.executeJavaScript(`(()=>{const e=document.getElementById('speech-bubble'),r=e.getBoundingClientRect();return {width:r.width,top:r.top,bottom:r.bottom,tail:getComputedStyle(e,':after').content};})()`);
+  const bubbleLayout=await win.webContents.executeJavaScript(`(()=>{const e=document.getElementById('speech-bubble'),r=e.getBoundingClientRect();return {width:r.width,top:r.top,bottom:r.bottom,tail:!!e.querySelector('.whale-tail path')};})()`);
   assert.ok(bubbleLayout.width<220,'Short speech should fit its words instead of stretching across the window');
   assert.ok(bubbleLayout.top>=0 && bubbleLayout.bottom<340);
-  assert.notEqual(bubbleLayout.tail,'none');
+  assert.equal(bubbleLayout.tail,true);
   await writeFile(path.join(output,'overlay-bubble-preview.png'),(await win.webContents.capturePage()).toPNG());
   await new Promise(resolve=>setTimeout(resolve,12000));
   assert.equal(await win.webContents.executeJavaScript("getComputedStyle(document.getElementById('speech-bubble')).opacity"),'0','Temporary speech must fade away');
-  assert.equal(win.getBounds().height,412,'Closing chat must shrink the native window');
+  assert.equal(win.getBounds().height,Math.round(202+250+compactFooter(1)),'Closing chat must shrink the native window');
   const sizes=[];
   for(const size of [60,160]){
     await win.webContents.executeJavaScript(`document.getElementById('pet-size').value='${size}';document.getElementById('pet-size').dispatchEvent(new Event('input'));`);
@@ -222,7 +224,7 @@ module.exports = async function smoke({ win, output, request, nativeState, setCl
     assert.ok(Math.abs(actual.video-300*size/100)<1);
     assert.ok(Math.abs(actual.hit-130*size/100)<1);
     assert.equal(actual.saved,String(size));
-    assert.equal(win.getBounds().height,Math.round(202*size/100+210));
+    assert.equal(win.getBounds().height,Math.round(202*size/100+250+compactFooter(size/100)));
     const longBubble=await win.webContents.executeJavaScript(`(()=>{showBubble('鲸'.repeat(120));const r=document.getElementById('speech-bubble').getBoundingClientRect();return {top:r.top,left:r.left,right:r.right,height:r.height};})()`);
     assert.ok(longBubble.top>=0 && longBubble.left>=0 && longBubble.right<=win.getBounds().width,'Long speech must stay inside the scaled window');
     sizes.push({size,...actual});

@@ -15,7 +15,7 @@ test('speech editing bounds its input and rejects an overlong output', async () 
   let request;
   const llm = { stream: async function* (options) {
     request = options;
-    yield { type: 'text-delta', text: JSON.stringify({ text: '长'.repeat(101), emotion: 'neutral' }) };
+    yield { type: 'text-delta', text: JSON.stringify({ text: '长'.repeat(151), emotion: 'neutral' }) };
   } };
   assert.equal(await distillSpeech(llm, { text: '报'.repeat(10000), userText: '问'.repeat(2000),
     provider: 'official', model: 'model', sessionId: 'test', signal: new AbortController().signal }), null);
@@ -39,4 +39,18 @@ test('tiny reactions retain shared context and emotion; malformed emotional outp
   assert.deepEqual(await distillSpeech(llm, args), output, 'The new 100-character speech limit is accepted');
   output = { text: '欸？', emotion: 'unsupported' };
   assert.equal(await distillSpeech(llm, args), null);
+});
+
+test('speech editing selects from the complete semantic catalog, independently of voice tone',async()=>{
+  let request,output={text:'那我给你拉一小段。',emotion:'listening_nod',tone:'gentle',animation:'music/playing_the_violin'};
+  const llm={stream:async function*(options){request=options;yield {type:'text-delta',text:JSON.stringify(output)};}};
+  const args={text:'可以，给你拉一小段。',userText:'想听琴弦唱歌，不用开口的那种'};
+  assert.equal((await distillSpeech(llm,args)).animation,'music/playing_the_violin');
+  const payload=JSON.parse(request.messages[1].content[0].text);
+  assert.equal(payload.animation.catalog.length,164);
+  assert.ok(payload.animation.catalog.every(item=>item.id&&item.meaning));
+  output={...output,animation:'none'};
+  assert.equal((await distillSpeech(llm,{...args,userText:'不要拉小提琴'})).animation,'none');
+  output={...output,animation:'../../missing'};
+  assert.equal((await distillSpeech(llm,args)).animation,undefined);
 });

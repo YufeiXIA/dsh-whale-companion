@@ -18,21 +18,19 @@ export const backgroundApps = Object.freeze({
 });
 
 export class AmbientCompanion {
-  constructor(saved = {}, { now = Date.now, random = Math.random } = {}) {
+  constructor(saved = {}, { now = Date.now } = {}) {
     this.now = now;
-    this.random = random;
     this.enabled = saved.enabled !== false;
-    this.minMinutes = saved.minMinutes ?? 5;
-    this.maxMinutes = saved.maxMinutes ?? 10;
+    this.intervalMinutes = saved.intervalMinutes ?? saved.minMinutes ?? 5;
     // Off until the user turns it on and confirms; older saves that only had the default do not count.
     this.visionEnabled = saved.visionOptIn === true;
     this.backgroundEnabled = saved.backgroundEnabled !== false;
     this.background = null;
     this.newBackground = [];
     this.lastCaptureAt = Number(saved.lastCaptureAt) || 0;
-    this.nextAt = Math.max(Number(saved.nextAt) || 0, now() + 60000);
-    this.attempts = (saved.attempts ?? []).filter(at => Number.isFinite(at) && now() - at < 3600000);
-    this.unanswered = Number.isSafeInteger(saved.unanswered) && saved.unanswered > 0 ? saved.unanswered : 0;
+    // Legacy randomized/backoff deadlines must not delay the fixed schedule.
+    this.nextAt = saved.intervalMinutes !== undefined && Number.isFinite(saved.nextAt)
+      ? saved.nextAt : now() + this.cooldown();
     this.lastUserAt = now();
     this.lastSampleAt = 0;
     this.revision = 0;
@@ -43,20 +41,20 @@ export class AmbientCompanion {
   }
 
   save() {
-    return { enabled: this.enabled, minMinutes: this.minMinutes, maxMinutes: this.maxMinutes,
+    return { enabled: this.enabled, intervalMinutes: this.intervalMinutes,
       visionOptIn: this.visionEnabled, backgroundEnabled: this.backgroundEnabled, lastCaptureAt: this.lastCaptureAt,
-      nextAt: this.nextAt, attempts: this.attempts, unanswered: this.unanswered };
+      nextAt: this.nextAt };
   }
 
   status() {
     let waitingReason = this.waitingReason;
     if (!this.enabled) waitingReason = 'disabled';
     else if (!this.fresh()) waitingReason = 'unavailable';
-    return { enabled: this.enabled, minMinutes: this.minMinutes, maxMinutes: this.maxMinutes, visionEnabled: this.visionEnabled,
-      backgroundEnabled: this.backgroundEnabled, available: this.fresh(), unanswered: this.unanswered,
+    return { enabled: this.enabled, intervalMinutes: this.intervalMinutes, visionEnabled: this.visionEnabled,
+      backgroundEnabled: this.backgroundEnabled, available: this.fresh(),
       waitingReason,
       quietUntil: this.nextAt, lastResult: this.result,
-      policy: '按所选节奏主动陪伴，阅读或看视频时也会搭话；后台程序只报白名单里的类别；看图须先开启，至少间隔5分钟；每次未回复在基础间隔上累加5分钟，回复后恢复。' };
+      policy: '按固定周期检查并主动陪伴，默认每5分钟，可手动调整；不因未回复延长。看图须先开启，只看主屏可见窗口；后台程序只读类别。忙碌、免打扰、锁屏时暂缓，恢复后不连续补发。' };
   }
 
   fresh() {
@@ -65,7 +63,7 @@ export class AmbientCompanion {
 
   valid(event) {
     return this.fresh() && this.revision === event.revision && this.now() < event.expiresAt &&
-      this.current.app !== 'companion';
+      (event.resumed === true || this.current.app !== 'companion');
   }
 
   invalidate() {
@@ -73,31 +71,29 @@ export class AmbientCompanion {
     this.revision++;
   }
 
-  configure(enabled, { minMinutes = this.minMinutes, maxMinutes = this.maxMinutes, visionEnabled = this.visionEnabled,
+  configure(enabled, { intervalMinutes = this.intervalMinutes, visionEnabled = this.visionEnabled,
     backgroundEnabled = this.backgroundEnabled } = {}) {
     if (typeof enabled !== 'boolean') throw new Error('Expected ambient enabled boolean');
-    if (!Number.isInteger(minMinutes) || !Number.isInteger(maxMinutes) || minMinutes < 2 ||
-        maxMinutes > 60 || minMinutes > maxMinutes || typeof visionEnabled !== 'boolean' ||
-        typeof backgroundEnabled !== 'boolean') throw new Error('请选择2～60分钟内的有效频率区间');
+    if (!Number.isInteger(intervalMinutes) || intervalMinutes < 1 || intervalMinutes > 60 || typeof visionEnabled !== 'boolean' ||
+        typeof backgroundEnabled !== 'boolean') throw new Error('请选择1～60分钟内的有效周期');
+    const resetClock = enabled !== this.enabled || intervalMinutes !== this.intervalMinutes;
     this.enabled = enabled;
-    this.minMinutes = minMinutes; this.maxMinutes = maxMinutes;
+    this.intervalMinutes = intervalMinutes;
     this.visionEnabled = visionEnabled;
     this.backgroundEnabled = backgroundEnabled;
     this.background = null; this.newBackground = [];
     this.invalidate();
-    this.nextAt = this.now() + this.cooldown();
+    if (resetClock) this.nextAt = this.now() + this.cooldown();
   }
 
   userInteraction() {
     this.lastUserAt = this.now();
-    this.unanswered = 0;
-    this.nextAt = this.now() + this.cooldown();
     this.revision++;
   }
 
-  cooldown() { return (this.minMinutes + this.random() * (this.maxMinutes - this.minMinutes) + this.unanswered * 5) * 60000; }
+  cooldown() { return this.intervalMinutes * 60000; }
 
-  captureDue() { return this.visionEnabled && this.now() - this.lastCaptureAt >= 300000; }
+  captureDue() { return this.visionEnabled; }
 
   sample(sample, { blocked = false } = {}) {
     if (!sample || typeof sample.available !== 'boolean' ||
@@ -111,7 +107,6 @@ export class AmbientCompanion {
     if (!this.enabled || !sample.available) { this.invalidate(); return null; }
     this.trackBackground(this.backgroundEnabled ? sample.background ?? [] : []);
     if (gap || sample.app !== this.current?.app || sample.contextKey !== this.current?.contextKey) {
-      this.revision++;
       this.current = { app: sample.app, contextKey: sample.contextKey, since: now, offered: false, longOffered: false };
     }
     const current = this.current;
@@ -119,11 +114,7 @@ export class AmbientCompanion {
     if (blocked) this.waitingReason = 'busy';
     else if (sample.app === 'companion') this.waitingReason = 'companion';
     else if (now < this.nextAt) this.waitingReason = 'cooldown';
-    else if (now - this.lastUserAt < 60000) this.waitingReason = 'recent-chat';
-    else if (now - current.since < 45000) this.waitingReason = 'settling';
     if (this.waitingReason) return null;
-    this.attempts = this.attempts.filter(at => now - at < 3600000);
-    if (this.attempts.length >= Math.max(2, Math.floor(60 / this.maxMinutes))) { this.waitingReason = 'hour-limit'; return null; }
     let kind;
     if (!current.offered) kind = 'application';
     else if (!current.longOffered && now - current.since >= 2700000 && ['code', 'documents'].includes(sample.app)) kind = 'long-focus';
@@ -141,7 +132,7 @@ export class AmbientCompanion {
     return { kind, category, application, minutes: Math.floor((now - current.since) / 60000),
       background: (this.background ?? []).map(kind => backgroundApps[kind]),
       openedInBackground: opened ? backgroundApps[opened] : null, openedKind: opened ?? null,
-      revision: this.revision, expiresAt: now + 30000, key };
+      sampledAt: now, revision: this.revision, expiresAt: now + 90000, key };
   }
 
   // The first list after start or a settings change is the baseline, so only apps opened later count as new.
@@ -154,8 +145,8 @@ export class AmbientCompanion {
   }
 
   attempted(event) {
-    this.attempts.push(this.now());
-    this.nextAt = this.now() + this.cooldown();
+    const period = this.cooldown();
+    this.nextAt += Math.max(1, Math.floor((this.now() - this.nextAt) / period) + 1) * period;
     if (event.kind !== 'company') this.topics.set(event.key, this.now());
     if (event.openedKind) this.newBackground = this.newBackground.filter(kind => kind !== event.openedKind);
     this.current.offered = true;
@@ -165,8 +156,6 @@ export class AmbientCompanion {
   }
 
   delivered() {
-    this.unanswered++;
-    this.nextAt += 300000;
     this.result = 'said';
   }
 }

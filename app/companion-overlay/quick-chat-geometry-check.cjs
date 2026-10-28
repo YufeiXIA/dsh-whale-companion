@@ -19,7 +19,7 @@ app.whenReady().then(async()=>{
   win.setOpacity(0);win.showInactive();
   await win.webContents.executeJavaScript('initialState.then(()=>undefined)');
   const samples=[];
-  for(const scale of [.6,.8,1,1.4,1.6]){
+  for(const scale of [.5,.8,1,1.6,3,5]){
     win.setSize(Math.max(300,Math.round(300*scale)),Math.round(202*scale+250+compactFooter(scale)));
     await win.webContents.executeJavaScript(`voiceEnabled=false;stopVoice();petAnimator.desktop(false,[],false);setPanel(false);document.body.style.setProperty('--pet-scale','${scale}');document.body.classList.add('quick-chat-open');petAnimator.perform('idle/breathing');void 0;`);
     await new Promise(resolve=>setTimeout(resolve,600));

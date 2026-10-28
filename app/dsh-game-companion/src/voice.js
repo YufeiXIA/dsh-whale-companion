@@ -15,7 +15,7 @@ export const EMOTION_PRESETS = Object.freeze({
   tsundere: Object.freeze({ label: '小傲娇', delivery: '请用俏皮、小傲娇的年轻女声说话。开头藏不住一点开心，说到才没有时轻轻嘴硬，后半句有点不好意思地放软。亲近、不凶、不大喊，不用播报腔。' }),
   serious: Object.freeze({ label: '认真', delivery: '请用认真、沉着的年轻女声说话，咬字清楚，节奏稳当，像认真和熟悉的朋友交代一件小事。自然、温暖，不卖萌，不用报告或新闻播报腔。' })
 });
-// Speaking style per reply emotion; shared with the standalone lite app.
+// Speaking style per reply emotion, used when a reply carries no voice tone; shared with the standalone lite app.
 const EMOTION_DELIVERY = Object.freeze({
   happy_hop: '轻快、开心，像和熟悉的朋友打游戏。自然说话，不夸张。',
   tsundere_pout: '轻轻嘴硬，有一点俏皮的傲娇，亲近而不生气。',
@@ -44,7 +44,7 @@ function voiceAdapterRoot() {
   return root;
 }
 
-export async function loadPetVoice(authorizer, { emotional = false } = {}) {
+export async function loadPetVoice(authorizer, { emotional = false, voice } = {}) {
   if (emotional) return loadCompanionVoice(authorizer);
   const root = voiceAdapterRoot();
   const dist = join(root, 'code/desktop-pet/dist');
@@ -62,7 +62,7 @@ export async function loadPetVoice(authorizer, { emotional = false } = {}) {
   const keyFile = credentials.credentialRegistry(config).file(selection.credentialRef, 'dashscope');
   const store = new media.MemoryMediaStore();
   const providerConfig = { model: selection.model, endpoint: selection.endpoint,
-    voice: selection.voice, language: selection.language, authorizer,
+    voice: voice ?? selection.voice, language: selection.language, authorizer,
     apiKey: () => {
       const actual = realpathSync(keyFile), info = statSync(actual);
       if (!files.isOutside(realpathSync(config.projectRoot), actual) || !files.isPrivateFileSync(actual, info) || info.size > keys.MAX_API_KEY_FILE_BYTES) throw new Error('VOICE_CREDENTIAL_UNAVAILABLE');
@@ -73,8 +73,10 @@ export async function loadPetVoice(authorizer, { emotional = false } = {}) {
   };
   const provider = new tts.QwenTtsProvider(providerConfig, store,
     gameVoiceTransport(new transport.ProviderTransport(), audioTts.normalizeQwenAudioWav));
-  return { provider, store, model: gameVoiceModel(selection.model), voice: selection.voice };
+  return { provider, store, model: gameVoiceModel(selection.model), voice: providerConfig.voice };
 }
+
+export const loadMomoVoice = authorizer => loadPetVoice(authorizer, { voice: 'Momo' });
 
 export async function loadCompanionVoice(authorizer) {
   const original = await loadPetVoice(authorizer);
@@ -104,15 +106,26 @@ export const FISH_MODEL = 's2.1-pro-free';
 export const PRESET_TONES = Object.freeze({ gentle: ['gentle', null], happy: ['happy', null], tsundere: ['tsundere', 'shy'], serious: ['serious', null] });
 
 export function loadFishVoice(authorizer, { keyFile, voice = FISH_VOICE, model = FISH_MODEL, fetch = globalThis.fetch }) {
-  const provider = { synthesize: async ({ scope, text, expression }, signal) => {
+  const provider = { synthesize: async ({ scope, text, expression, onChunk }, signal) => {
     const key = (await readFile(keyFile, 'utf8').catch(() => '')).trim();
     if (!key) throw new Error('VOICE_CREDENTIAL_UNAVAILABLE');
     const permit = await authorizer.authorize({ scope, model, textCharacters: Array.from(text).length }, signal);
     try {
       const response = await fetch('https://api.fish.audio/v1/tts', { method: 'POST', signal,
         headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json', model },
-        body: JSON.stringify({ text: fishToneText(text, expression?.tone, expression?.toneEnd), reference_id: voice, format: 'wav', sample_rate: 24000, latency: 'balanced' }) });
+        body: JSON.stringify({ text: fishToneText(text, expression?.tone, expression?.toneEnd), reference_id: voice, format: onChunk ? 'pcm' : 'wav', sample_rate: 24000, latency: 'balanced' }) });
       if (!response.ok) throw new Error(response.status === 402 ? 'VOICE_QUOTA_EXHAUSTED' : 'VOICE_UNAVAILABLE');
+      if (onChunk) {
+        let received = 0;
+        for await (const chunk of response.body) {
+          signal.throwIfAborted();
+          received += chunk.length;
+          await onChunk(chunk);
+        }
+        if (!received || received % 2) throw new Error('VOICE_UNAVAILABLE');
+        await permit.settle({ status: 'succeeded' });
+        return { streamed: true };
+      }
       const bytes = new Uint8Array(await response.arrayBuffer());
       // Streamed WAV carries placeholder sizes; write the real ones so every player accepts it.
       const view = new DataView(bytes.buffer);
@@ -131,13 +144,14 @@ export function loadFishVoice(authorizer, { keyFile, voice = FISH_VOICE, model =
 }
 
 export class CompanionVoice {
-  constructor({ directory, load = loadCompanionVoice, loadEmotional = loadEmotionalVoice,
+  constructor({ directory, load = loadCompanionVoice, loadEmotional = loadEmotionalVoice, loadMomo = loadMomoVoice,
     loadFish = authorizer => loadFishVoice(authorizer, { keyFile: join(directory, 'fish-audio-key.txt') }),
     previewDirectory = new URL('../public/voice-previews/longhua-v3.1/', import.meta.url),
     fishPreviewDirectory = new URL('../public/voice-previews/fish/', import.meta.url) }) {
     this.directory = directory;
     this.load = load;
     this.loadEmotional = loadEmotional;
+    this.loadMomo = loadMomo;
     this.loadFish = loadFish;
     this.previewDirectory = previewDirectory;
     this.fishPreviewDirectory = fishPreviewDirectory;
@@ -166,15 +180,17 @@ export class CompanionVoice {
       text: EMOTION_PREVIEW_TEXT, emotion: preset }, sessionId, signal, preset, voiceId);
   }
 
-  async speak(message, sessionId, signal, preset = null, voiceId = 'longhua') {
-    if (!['longhua', 'fish'].includes(voiceId)) throw new Error('VOICE_SELECTION_REQUIRED');
+  async speak(message, sessionId, signal, preset = null, voiceId = 'longhua', onChunk = null) {
+    if (!['longhua', 'momo', 'fish'].includes(voiceId)) throw new Error('VOICE_SELECTION_REQUIRED');
+    if (onChunk && voiceId !== 'fish') throw new Error('VOICE_SELECTION_REQUIRED');
+    if (voiceId === 'momo' && preset !== null) throw new Error('VOICE_EMOTION_UNAVAILABLE');
     if (preset !== null && (typeof preset !== 'string' || !Object.hasOwn(EMOTION_PRESETS, preset))) throw new Error('VOICE_EMOTION_REQUIRED');
     if (message?.role !== 'assistant' || message.spoken !== true || typeof message.id !== 'string' ||
         typeof message.text !== 'string' || !message.text.trim()) throw new Error('VOICE_MESSAGE_REQUIRED');
-    if (Array.from(message.text).length > (message.ambient ? 240 : 120)) throw new Error('VOICE_TEXT_TOO_LONG');
+    if (Array.from(message.text).length > (message.ambient ? 240 : 300)) throw new Error('VOICE_TEXT_TOO_LONG');
     signal.throwIfAborted();
     const cacheKey = `${voiceId}:${message.id}`;
-    if (this.cache.has(cacheKey)) return this.cache.get(cacheKey);
+    if (!onChunk && this.cache.has(cacheKey)) return this.cache.get(cacheKey);
     if (this.active) throw new Error('VOICE_BUSY');
     const controller = new AbortController();
     this.active = controller;
@@ -192,16 +208,18 @@ export class CompanionVoice {
         return { settle: async outcome => appendFile(file, JSON.stringify({ ...audit,
           status: outcome.status, durationMs: Date.now() - startedAt, usage: outcome.usage }) + '\n') };
       } };
-      if (voiceId === 'fish') runtime = this.fishRuntime ??= await this.loadFish(authorizer);
+      if (voiceId === 'momo') runtime = this.momoRuntime ??= await this.loadMomo(authorizer);
+      else if (voiceId === 'fish') runtime = this.fishRuntime ??= await this.loadFish(authorizer);
       else runtime = preset === null
         ? this.runtime ??= await this.load(authorizer)
         : this.emotionRuntime ??= await this.loadEmotional(authorizer);
       const [tone, toneEnd] = preset !== null ? PRESET_TONES[preset] : [validTone(message.tone), validTone(message.toneEnd)];
       const delivery = EMOTION_PRESETS[preset]?.delivery ?? (tone ? toneDelivery(tone, toneEnd) : emotionDelivery(message.emotion));
-      const result = await runtime.provider.synthesize({ scope, text: message.text,
+      const result = await runtime.provider.synthesize({ scope, text: message.text, onChunk,
           expression: { emotion: message.emotion ?? 'neutral', intensity: message.emotion === 'happy_hop' ? 0.5 : 0.3, delivery, gesture: null, tone, toneEnd }
       }, combined);
       combined.throwIfAborted();
+      if (result.streamed) return { streamed: true };
       const audio = { bytes: await runtime.store.read(scope, result.audio), mimeType: result.audio.mimeType,
         durationMs: result.durationMs, voice: runtime.voice, model: runtime.model };
       this.cache.set(cacheKey, audio);
