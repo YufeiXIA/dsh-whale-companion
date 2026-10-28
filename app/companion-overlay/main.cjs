@@ -1,4 +1,4 @@
-const { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, systemPreferences, Tray } = require('electron');
+const { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, Menu, nativeImage, powerMonitor, screen, shell, systemPreferences, Tray } = require('electron');
 const { readFile, mkdir, rm } = require('node:fs/promises');
 const path = require('node:path');
 const { planRoam, planPoint, roamPosition, compactFooter } = require('./roaming.cjs');
@@ -54,9 +54,9 @@ let gameLifecycle, gameTimer, activitySensor, screenCapture, activityHeartbeat =
 let edge=null,edgeX=null,tucked=false,slideTimer=null,slideTarget=null,desktopMotionAllowed=true,tray,quietState={focusUntil:0,quietUntil:0,visionPausedUntil:0};
 // The sampler runs for the desktop behaviours; only ambient chat forwards its coarse app label to the service.
 let lastSampleWindow=null,ambientWanted=false,forwarded=false,lastForwardAt=0,perch=null,perchPending=null,windowTracker,perchRequest=0;
-let hiddenForFullscreen=false,fullscreenOverride=null,desktopPrefs={stroll:false,fullscreenHide:true};
+let hiddenForFullscreen=false,fullscreenOverride=null,desktopPrefs={stroll:false,fullscreenHide:true},sessionBlocked=false;
 const health=createHealthClock();
-const desktopPermissions=createDesktopPermissions({systemPreferences,desktopCapturer,openExternal:url=>shell.openExternal(url)});
+const desktopPermissions=createDesktopPermissions({systemPreferences,desktopCapturer,openExternal:url=>shell.openExternal(url),isSessionActive:()=>!sessionBlocked});
 async function inspectActivity(primary=false) {
   const command=activityCommand(root,{once:true,primary,excludeProcessId:process.pid});
   const {stdout}=await execFile(command.file,command.args,{windowsHide:true,timeout:5000});
@@ -459,6 +459,7 @@ async function start() {
     upload:body=>request('/game-companion/vision',body,18000)});
   let lastActivityApp,lastActivityWindow,activityContext=0;
   activitySensor = createActivitySensor({ root, publish: async sample => {
+    if(sessionBlocked)sample={available:false};
     lastSampleWindow=sample.available?sample.windowId:null;
     desktopSense(sample);
     if (!ambientWanted || Date.now() - activityHeartbeat > 20000) {
@@ -505,7 +506,20 @@ async function start() {
   setPointerPassthrough(true);
   screen.on('display-metrics-changed',refreshDock);
   screen.on('display-removed',refreshDock);
-  if (!smoke) { activitySensor.setEnabled(true); setInterval(() => activitySensor.setEnabled(true), 60000).unref(); }
+  if(process.platform==='darwin'){
+    const session=blocked=>{
+      sessionBlocked=blocked;
+      if(!smoke)activitySensor.setEnabled(!blocked);
+      if(blocked){
+        win.webContents.send('companion-activity-invalid');
+        void request('/game-companion/control',{action:'ambient-sample',sample:{available:false}}).catch(()=>{});
+      }
+    };
+    session(powerMonitor.getSystemIdleState(1)==='locked');
+    powerMonitor.on('lock-screen',()=>session(true));powerMonitor.on('suspend',()=>session(true));
+    powerMonitor.on('unlock-screen',()=>session(false));powerMonitor.on('resume',()=>session(powerMonitor.getSystemIdleState(1)==='locked'));
+  }
+  if (!smoke) { activitySensor.setEnabled(!sessionBlocked); setInterval(() => activitySensor.setEnabled(!sessionBlocked), 60000).unref(); }
   pointPicker=createPointPicker({BrowserWindow,ipcMain,screen});
   gameLifecycle=lite?{snapshot:()=>({known:false,humanRunning:false,whaleRunning:false,automatic:false,busy:false,message:''}),
     setAutomatic(){return this.snapshot();},exitGame:async()=>{throw new Error('No game in the standalone app');},poll:async()=>{}}:createGameLifecycle({

@@ -8,8 +8,8 @@ function windowRect(sample, screen, platform = process.platform) {
   return platform === 'darwin' || sample.coordinateSpace === 'dip' ? sample.rect : screen.screenToDipRect(null, sample.rect);
 }
 
-function createDesktopPermissions({ platform = process.platform, systemPreferences, desktopCapturer, openExternal }) {
-  const screenAllowed = () => platform !== 'darwin' || systemPreferences.getMediaAccessStatus('screen') === 'granted';
+function createDesktopPermissions({ platform = process.platform, systemPreferences, desktopCapturer, openExternal, isSessionActive = () => true }) {
+  const screenAllowed = () => isSessionActive() && (platform !== 'darwin' || systemPreferences.getMediaAccessStatus('screen') === 'granted');
   function status() {
     return { platform, screen: platform === 'darwin' ? systemPreferences.getMediaAccessStatus('screen') : 'granted',
       accessibility: platform !== 'darwin' || systemPreferences.isTrustedAccessibilityClient(false) };

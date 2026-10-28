@@ -33,3 +33,12 @@ test('Windows does not call macOS permission APIs or open settings', async () =>
   assert.equal(permissions.screenAllowed(), true);
   assert.equal((await permissions.perform('screen')).accessibility, true);
 });
+
+test('locking or suspending the session prevents image upload even while screen access remains granted', () => {
+  let active = true;
+  const permissions = createDesktopPermissions({ platform: 'darwin', isSessionActive: () => active,
+    systemPreferences: { getMediaAccessStatus: () => 'granted' } });
+  assert.equal(permissions.screenAllowed(), true);
+  active = false; assert.equal(permissions.screenAllowed(), false);
+  active = true; assert.equal(permissions.screenAllowed(), true);
+});

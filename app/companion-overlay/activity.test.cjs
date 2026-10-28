@@ -7,7 +7,7 @@ const { createActivitySensor } = require('./activity.cjs');
 test('companion focus does not interrupt resumed speech, but unavailable activity still does',async()=>{
   const fs=require('node:fs'),vm=require('node:vm'),signals=[],samples=[];
   const main=fs.readFileSync(require.resolve('./main.cjs'),'utf8');
-  const context={root:'fixture',ambientWanted:true,activityHeartbeat:Date.now(),forwarded:false,lastForwardAt:0,
+  const context={root:'fixture',ambientWanted:true,activityHeartbeat:Date.now(),forwarded:false,lastForwardAt:0,sessionBlocked:false,
     desktopSense(){},createActivitySensor:({publish})=>publish,
     win:{isDestroyed:()=>false,webContents:{send:signal=>signals.push(signal)}},
     quietState:{visionPausedUntil:0},request:async(_,body)=>{samples.push(body.sample);return {};}};
