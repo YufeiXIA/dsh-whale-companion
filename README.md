@@ -42,7 +42,7 @@
 
 Windows 稳定版仍为 0.2.0：轻便版选 `WhaleCompanion-Lite-0.2.0-Setup.exe` 或 `WhaleCompanion-Lite-0.2.0-Portable.zip`；完整版选 `WhaleCompanion-Full-0.2.0-Source.zip`，按下方步骤配置。发布页提供 `SHA256SUMS.txt`。
 
-Mac 轻便版 0.3.0-macos.1 为独立预发布，面向 **macOS 13+、Apple Silicon（M 系列）**，不含 Intel 构建。选择 `WhaleCompanion-Lite-0.3.0-macos.1-macOS-arm64.dmg`，把「大肥鱼.app」拖到「应用程序」后打开；ZIP 为同一应用的另一种封装。首次打开、Gatekeeper 与可选权限见 [Mac 安装说明](docs/macos-port.md)，功能范围和验证进度见 [Mac 更新说明](docs/release-0.3.0-macos.1.md)。完整版的 DSH 与游戏适配仍仅面向 Windows。Mac 预发布不替换 GitHub 的 [Windows 最新稳定版](https://github.com/YufeiXIA/dsh-whale-companion/releases/latest)。
+Mac 轻便版 0.3.0-macos.1 为独立预发布，面向 **macOS 13+、Apple Silicon（M 系列）**，不含 Intel 构建。选择 `WhaleCompanion-Lite-0.3.0-macos.1-macOS-arm64.dmg`，把「WhaleCompanion.app」拖到「应用程序」后打开；ZIP 为同一应用的另一种封装。首次打开、Gatekeeper 与可选权限见 [Mac 安装说明](docs/macos-port.md)，功能范围和验证进度见 [Mac 更新说明](docs/release-0.3.0-macos.1.md)。完整版的 DSH 与游戏适配仍仅面向 Windows。Mac 预发布不替换 GitHub 的 [Windows 最新稳定版](https://github.com/YufeiXIA/dsh-whale-companion/releases/latest)。
 
 ## 来源
 

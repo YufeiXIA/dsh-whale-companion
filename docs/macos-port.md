@@ -7,7 +7,7 @@
 ## 下载安装
 
 1. 打开 [v0.3.0-macos.1 预发布页](https://github.com/YufeiXIA/dsh-whale-companion/releases/tag/v0.3.0-macos.1)，下载 `WhaleCompanion-Lite-0.3.0-macos.1-macOS-arm64.dmg`。不便使用 DMG 时可选同名 `.zip`。
-2. 打开 DMG，把「大肥鱼.app」拖到「应用程序」；ZIP 则解压后移到 `/Applications`。退出 DMG，再从「应用程序」打开。更新前先退出旧版，保留数据目录。
+2. 打开 DMG，把「WhaleCompanion.app」拖到「应用程序」；ZIP 则解压后移到 `/Applications`。退出 DMG，再从「应用程序」打开。更新前先退出旧版，保留数据目录。
 3. 此包使用 ad-hoc 签名，没有 Apple Developer ID 签名，也没有 Apple 公证。若系统拦截，先尝试打开一次，再在「系统设置 → 隐私与安全性」里对这个应用选择「仍要打开」，按提示确认。使用前确认来源为本项目发布页；步骤依据 [Apple 官方说明](https://support.apple.com/102445)。无需关闭整个系统的 Gatekeeper。
 4. 首次设置里选择模型服务商，输入自己的 API Key，点击「测试一下」。语音、识图服务分别按 [轻便版设置](../lite/README.md#第一次打开)配置。
 5. 菜单栏鲸鱼图标提供打开聊天、设置、睡眠/唤醒与退出入口。关闭聊天面板后，桌宠仍可继续运行；完全退出请使用菜单栏中的退出命令。

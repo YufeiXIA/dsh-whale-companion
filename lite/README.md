@@ -22,7 +22,7 @@ Windows 完整更新见 [0.2.0 说明](../docs/release-0.2.0.md)。
 
 | 文件 | 用途 |
 |---|---|
-| `WhaleCompanion-Lite-0.3.0-macos.1-macOS-arm64.dmg` | 打开后把「大肥鱼.app」拖进「应用程序」 |
+| `WhaleCompanion-Lite-0.3.0-macos.1-macOS-arm64.dmg` | 打开后把「WhaleCompanion.app」拖进「应用程序」 |
 | `WhaleCompanion-Lite-0.3.0-macos.1-macOS-arm64.zip` | 解压后把同一个应用移到「应用程序」 |
 | `SHA256SUMS-macOS-arm64.txt` | Mac 发布文件的 SHA-256 校验值 |
 | `Mac-build-validation.json` | 构建与自动化检查结果；不代表真实用户完整验收 |

@@ -13,7 +13,7 @@
 | `SHA256SUMS-macOS-arm64.txt` | Mac 发布产物校验值 |
 | `Mac-build-validation.json` | 对应构建及自动化检查的结果和边界 |
 
-先把「大肥鱼.app」放到 `/Applications` 再打开。此预发布仅有 ad-hoc 签名，没有 Apple Developer ID 签名，也没有 Apple 公证。Gatekeeper 首次拦截时，按 [Apple 官方的单应用「仍要打开」步骤](https://support.apple.com/102445)操作。完整安装步骤、数据路径和更新方式见 [Mac 说明](macos-port.md)。
+先把「WhaleCompanion.app」放到 `/Applications` 再打开。此预发布仅有 ad-hoc 签名，没有 Apple Developer ID 签名，也没有 Apple 公证。Gatekeeper 首次拦截时，按 [Apple 官方的单应用「仍要打开」步骤](https://support.apple.com/102445)操作。完整安装步骤、数据路径和更新方式见 [Mac 说明](macos-port.md)。
 
 ## 本次移植范围
 
