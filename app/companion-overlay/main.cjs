@@ -685,7 +685,7 @@ async function start() {
     if (action === 'close') { void closeSafely(); return; }
     throw new Error('Unknown window action');
   });
-  toggleAvailable = globalShortcut.register('Control+Alt+Space', () => setClickThrough(!clickThrough));
+  toggleAvailable = globalShortcut.register(process.platform === 'darwin' ? 'Command+Alt+Shift+Space' : 'Control+Alt+Space', () => setClickThrough(!clickThrough));
   focusAvailable = globalShortcut.register('Control+Alt+Enter', focusChat);
   win.on('close', event => { if (!allowClose) { event.preventDefault(); void closeSafely(); } });
   await win.loadURL(view);

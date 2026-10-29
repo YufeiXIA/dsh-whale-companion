@@ -11,11 +11,12 @@ window.addEventListener('DOMContentLoaded', async () => {
   const close = document.createElement('button'); close.id = 'native-close'; close.textContent = '×';
   close.title = '暂停并关闭'; close.setAttribute('aria-label', '暂停并关闭');
   function render(state) {
+    const shortcut = state.platform === 'darwin' ? '⌘⌥⇧Space' : 'Ctrl+Alt+Space';
     toggle.disabled = !state.toggleAvailable;
     toggle.textContent = state.clickThrough ? '点透中' : '启用点透';
-    hint.textContent = state.clickThrough ? 'Ctrl+Alt+Space 恢复点击' : '⠿ 挪个窝';
+    hint.textContent = state.clickThrough ? `${shortcut} 恢复点击` : '⠿ 挪个窝';
     bar.title = state.focusAvailable ? 'Ctrl+Alt+Enter 聚焦聊天；Esc 释放键鼠' : '聊天快捷键被占用，请点击输入框';
-    toggle.title = state.toggleAvailable ? 'Ctrl+Alt+Space 切换' : '快捷键被占用，已禁用点透以便恢复操作';
+    toggle.title = state.toggleAvailable ? `${shortcut} 切换` : '快捷键被占用，已禁用点透以便恢复操作';
   }
   toggle.onclick = async () => render(await ipcRenderer.invoke('companion-window', 'toggle'));
   close.onclick = () => ipcRenderer.invoke('companion-window', 'close');
